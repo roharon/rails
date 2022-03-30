@@ -170,7 +170,7 @@ module Enumerable
   alias :without :excluding
 
   # Extract the given key from each element in the enumerable.
-  #
+  # @example
   #   [{ name: "David" }, { name: "Rafael" }, { name: "Aaron" }].pluck(:name)
   #   # => ["David", "Rafael", "Aaron"]
   #
@@ -186,7 +186,7 @@ module Enumerable
   end
 
   # Extract the given key from the first element in the enumerable.
-  #
+  # @example
   #   [{ name: "David" }, { name: "Rafael" }, { name: "Aaron" }].pick(:name)
   #   # => "David"
   #
@@ -205,6 +205,7 @@ module Enumerable
   # Returns a new +Array+ without the blank items.
   # Uses Object#blank? for determining if an item is blank.
   #
+  # @example
   #    [1, "", nil, 2, " ", [], {}, false, true].compact_blank
   #    # =>  [1, 2, true]
   #
@@ -222,8 +223,9 @@ module Enumerable
   # Returns a new +Array+ where the order has been set to that provided in the +series+, based on the +key+ of the
   # objects in the original enumerable.
   #
-  #   [ Person.find(5), Person.find(3), Person.find(1) ].in_order_of(:id, [ 1, 5, 3 ])
-  #   => [ Person.find(1), Person.find(5), Person.find(3) ]
+  # @example
+  #    [ Person.find(5), Person.find(3), Person.find(1) ].in_order_of(:id, [ 1, 5, 3 ])
+  #    => [ Person.find(1), Person.find(5), Person.find(3) ]
   #
   # If the +series+ include keys that have no corresponding element in the Enumerable, these are ignored.
   # If the Enumerable has additional elements that aren't named in the +series+, these are not included in the result.
@@ -234,6 +236,7 @@ module Enumerable
   # Returns the sole item in the enumerable. If there are no items, or more
   # than one item, raises +Enumerable::SoleItemExpectedError+.
   #
+  # @example
   #    ["x"].sole          # => "x"
   #    Set.new.sole        # => Enumerable::SoleItemExpectedError: no item found
   #    { a: 1, b: 2 }.sole # => Enumerable::SoleItemExpectedError: multiple items found

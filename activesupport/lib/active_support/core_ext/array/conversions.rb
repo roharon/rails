@@ -14,7 +14,7 @@ class Array
   # pass an option key that doesn't exist in the list below, it will raise an
   # <tt>ArgumentError</tt>.
   #
-  # ==== Options
+  # @options
   #
   # * <tt>:words_connector</tt> - The sign or word used to join all but the last
   #   element in arrays with three or more elements (default: ", ").
@@ -26,7 +26,7 @@ class Array
   #   the connector options defined on the 'support.array' namespace in the
   #   corresponding dictionary file.
   #
-  # ==== Examples
+  # @example
   #
   #   [].to_sentence                      # => ""
   #   ['one'].to_sentence                 # => "one"

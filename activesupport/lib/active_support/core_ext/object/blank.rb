@@ -83,6 +83,7 @@ end
 class Array
   # An array is blank if it's empty:
   #
+  # @example
   #   [].blank?      # => true
   #   [1,2,3].blank? # => false
   #
