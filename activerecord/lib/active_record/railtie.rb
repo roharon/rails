@@ -360,9 +360,9 @@ To keep using the current cache store, you can turn off cache versioning entirel
       end
 
       # Filtered params
-      ActiveSupport.on_load(:action_controller) do
+      ActiveSupport.on_load(:action_controller, run_once: true) do
         if ActiveRecord::Encryption.config.add_to_filter_parameters
-          ActiveRecord::Encryption.install_auto_filtered_parameters(app)
+          ActiveRecord::Encryption.install_auto_filtered_parameters_hook(app)
         end
       end
     end
@@ -385,6 +385,20 @@ To keep using the current cache store, you can turn off cache versioning entirel
 
           if app.config.active_record.cache_query_log_tags
             ActiveRecord::QueryLogs.cache_query_log_tags = true
+          end
+        end
+      end
+    end
+
+    initializer "active_record.unregister_current_scopes_on_unload" do |app|
+      config.after_initialize do
+        unless app.config.cache_classes
+          Rails.autoloaders.main.on_unload do |_cpath, value, _abspath|
+            # Conditions are written this way to be robust against custom
+            # implementations of value#is_a? or value#<.
+            if Class === value && ActiveRecord::Base > value
+              value.current_scope = nil
+            end
           end
         end
       end

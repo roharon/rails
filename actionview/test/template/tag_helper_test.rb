@@ -21,11 +21,19 @@ class TagHelperTest < ActionView::TestCase
   def test_tag_builder_void_tag
     assert_equal "<br>", tag.br
     assert_equal "<br class=\"some_class\">", tag.br(class: "some_class")
-    assert_equal "<svg><use href=\"#cool-icon\"></svg>", tag.svg { tag.use("href" => "#cool-icon") }
   end
 
   def test_tag_builder_void_tag_with_forced_content
     assert_equal "<br>some content</br>", tag.br("some content")
+  end
+
+  def test_tag_builder_self_closing_tag
+    assert_equal "<svg><use href=\"#cool-icon\" /></svg>", tag.svg { tag.use("href" => "#cool-icon") }
+    assert_equal "<svg><circle cx=\"5\" cy=\"5\" r=\"5\" /></svg>", tag.svg { tag.circle(cx: "5", cy: "5", r: "5") }
+  end
+
+  def test_tag_builder_self_closing_tag_with_content
+    assert_equal "<svg><circle><desc>A circle</desc></circle></svg>", tag.svg { tag.circle { tag.desc "A circle" } }
   end
 
   def test_tag_builder_is_singleton
@@ -404,7 +412,11 @@ class TagHelperTest < ActionView::TestCase
   end
 
   def test_tag_attributes_escapes_values
-    assert_not_includes "<script>alert()</script>", render_erb(<<~HTML.strip)
+    expected_output = <<~HTML.strip
+      <input type="text" xss="&quot;&gt;&lt;script&gt;alert()&lt;/script&gt;">
+    HTML
+
+    assert_equal expected_output, render_erb(<<~HTML.strip)
       <input type="text" <%= tag.attributes xss: '"><script>alert()</script>' %>>
     HTML
   end

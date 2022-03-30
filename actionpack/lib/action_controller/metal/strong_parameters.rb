@@ -92,8 +92,8 @@ module ActionController
   # * +permit_all_parameters+ - If it's +true+, all the parameters will be
   #   permitted by default. The default is +false+.
   # * +action_on_unpermitted_parameters+ - Controls behavior when parameters that are not explicitly
-  #    permitted are found. The default value is <tt>:log</tt> in test and development environments,
-  #    +false+ otherwise. The values can be:
+  #   permitted are found. The default value is <tt>:log</tt> in test and development environments,
+  #   +false+ otherwise. The values can be:
   #   * +false+ to take no action.
   #   * <tt>:log</tt> to emit an <tt>ActiveSupport::Notifications.instrument</tt> event on the
   #     <tt>unpermitted_parameters.action_controller</tt> topic and log at the DEBUG level.
@@ -236,7 +236,7 @@ module ActionController
     # By default, never raise an UnpermittedParameters exception if these
     # params are present. The default includes both 'controller' and 'action'
     # because they are added by Rails and should be of no concern. One way
-    # to change these is to specify `always_permitted_parameters` in your
+    # to change these is to specify +always_permitted_parameters+ in your
     # config. For instance:
     #
     #    config.action_controller.always_permitted_parameters = %w( controller action format )
@@ -297,9 +297,9 @@ module ActionController
     #
     #   safe_params = params.permit(:name)
     #   safe_params.to_h # => {"name"=>"Senjougahara Hitagi"}
-    def to_h
+    def to_h(&block)
       if permitted?
-        convert_parameters_to_hashes(@parameters, :to_h)
+        convert_parameters_to_hashes(@parameters, :to_h, &block)
       else
         raise UnfilteredParameters
       end
@@ -778,7 +778,7 @@ module ActionController
 
     # Deletes a key-value pair from +Parameters+ and returns the value. If
     # +key+ is not found, returns +nil+ (or, with optional code block, yields
-    # +key+ and returns the result). Cf. +#extract!+, which returns the
+    # +key+ and returns the result). Cf. #extract!, which returns the
     # corresponding +ActionController::Parameters+ object.
     def delete(key, &block)
       convert_value_to_parameters(@parameters.delete(key, &block))
@@ -908,9 +908,13 @@ module ActionController
       end
     end
 
+    def encode_with(coder) # :nodoc:
+      coder.map = { "parameters" => @parameters, "permitted" => @permitted }
+    end
+
     # Returns duplicate of object including all parameters.
     def deep_dup
-      self.class.new(@parameters.deep_dup).tap do |duplicate|
+      self.class.new(@parameters.deep_dup, @logging_context).tap do |duplicate|
         duplicate.permitted = @permitted
       end
     end
@@ -932,19 +936,20 @@ module ActionController
 
     private
       def new_instance_with_inherited_permitted_status(hash)
-        self.class.new(hash).tap do |new_instance|
+        self.class.new(hash, @logging_context).tap do |new_instance|
           new_instance.permitted = @permitted
         end
       end
 
-      def convert_parameters_to_hashes(value, using)
+      def convert_parameters_to_hashes(value, using, &block)
         case value
         when Array
           value.map { |v| convert_parameters_to_hashes(v, using) }
         when Hash
-          value.transform_values do |v|
+          transformed = value.transform_values do |v|
             convert_parameters_to_hashes(v, using)
-          end.with_indifferent_access
+          end
+          (block_given? ? transformed.to_h(&block) : transformed).with_indifferent_access
         when Parameters
           value.send(using)
         else
@@ -966,7 +971,7 @@ module ActionController
           converted_arrays << converted.dup
           converted
         when Hash
-          self.class.new(value)
+          self.class.new(value, @logging_context)
         else
           value
         end

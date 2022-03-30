@@ -125,7 +125,7 @@ class AppGeneratorTest < Rails::Generators::TestCase
   end
 
   def test_application_new_exits_with_non_zero_code_on_invalid_application_name
-    quietly { system "rails new test --no-rc" }
+    quietly { system "#{File.expand_path("../../exe/rails", __dir__)} new test --no-rc" }
     assert_equal false, $?.success?
   end
 
@@ -134,7 +134,7 @@ class AppGeneratorTest < Rails::Generators::TestCase
     run_generator [app_root]
     output = nil
     Dir.chdir(app_root) do
-      output = `rails new mysecondapp`
+      output = `#{File.expand_path("../../exe/rails", __dir__)} new mysecondapp`
     end
     assert_equal "Can't initialize a new Rails application within the directory of another, please change to a non-Rails directory first.\nType 'rails' for help.\n", output
     assert_equal false, $?.success?
@@ -144,7 +144,7 @@ class AppGeneratorTest < Rails::Generators::TestCase
     app_root = File.join(destination_root, "myfirstapp")
     run_generator [app_root]
     output = Dir.chdir(app_root) do
-      `rails new --help`
+      `#{File.expand_path("../../exe/rails", __dir__)} new --help`
     end
     assert_match(/rails new APP_PATH \[options\]/, output)
     assert_equal true, $?.success?
@@ -230,7 +230,7 @@ class AppGeneratorTest < Rails::Generators::TestCase
     end
   end
 
-  def test_app_update_does_not_generate_assets_initializer_when_sprockets_is_not_used
+  def test_app_update_does_not_generate_assets_initializer_when_sprockets_and_propshaft_are_not_used
     app_root = File.join(destination_root, "myapp")
     run_generator [app_root, "-a", "none"]
 
@@ -240,6 +240,20 @@ class AppGeneratorTest < Rails::Generators::TestCase
       quietly { generator.update_config_files }
 
       assert_no_file "#{app_root}/config/initializers/assets.rb"
+      assert_no_file "#{app_root}/app/assets/config/manifest.js"
+    end
+  end
+
+  def test_app_update_does_not_generate_manifest_config_when_propshaft_is_used
+    app_root = File.join(destination_root, "myapp")
+    run_generator [app_root, "-a", "propshaft"]
+
+    stub_rails_application(app_root) do
+      generator = Rails::Generators::AppGenerator.new ["rails"], { update: true, asset_pipeline: "propshaft" }, { destination_root: app_root, shell: @shell }
+      generator.send(:app_const)
+      quietly { generator.update_config_files }
+
+      assert_file "#{app_root}/config/initializers/assets.rb"
       assert_no_file "#{app_root}/app/assets/config/manifest.js"
     end
   end
@@ -944,26 +958,25 @@ class AppGeneratorTest < Rails::Generators::TestCase
   end
 
   def test_minimal_rails_app
-    app_root = File.join(destination_root, "myapp")
-    run_generator [app_root, "--minimal"]
+    run_generator [destination_root, "--minimal"]
 
-    assert_no_file "#{app_root}/config/storage.yml"
-    assert_no_file "#{app_root}/config/cable.yml"
-    assert_no_file "#{app_root}/views/layouts/mailer.html.erb"
-    assert_no_file "#{app_root}/app/jobs/application.rb"
-    assert_file "#{app_root}/app/views/layouts/application.html.erb" do |content|
+    assert_no_file "config/storage.yml"
+    assert_no_file "config/cable.yml"
+    assert_no_file "views/layouts/mailer.html.erb"
+    assert_no_file "app/jobs/application.rb"
+    assert_file "app/views/layouts/application.html.erb" do |content|
       assert_no_match(/data-turbo-track/, content)
     end
-    assert_file "#{app_root}/config/environments/development.rb" do |content|
+    assert_file "config/environments/development.rb" do |content|
       assert_no_match(/config\.active_storage/, content)
     end
-    assert_file "#{app_root}/config/environments/production.rb" do |content|
+    assert_file "config/environments/production.rb" do |content|
       assert_no_match(/config\.active_job/, content)
     end
-    assert_file "#{app_root}/config/boot.rb" do |content|
+    assert_file "config/boot.rb" do |content|
       assert_no_match(/require "bootsnap\/setup"/, content)
     end
-    assert_file "#{app_root}/config/application.rb" do |content|
+    assert_file "config/application.rb" do |content|
       assert_match(/#\s+require\s+["']active_job\/railtie["']/, content)
       assert_match(/#\s+require\s+["']active_storage\/engine["']/, content)
       assert_match(/#\s+require\s+["']action_mailer\/railtie["']/, content)
@@ -972,8 +985,8 @@ class AppGeneratorTest < Rails::Generators::TestCase
       assert_match(/#\s+require\s+["']action_cable\/engine["']/, content)
     end
 
-    assert_no_gem "jbuilder", app_root
-    assert_no_gem "web-console", app_root
+    assert_no_gem "jbuilder"
+    assert_no_gem "web-console"
   end
 
   private
@@ -984,19 +997,5 @@ class AppGeneratorTest < Rails::Generators::TestCase
 
     def action(*args, &block)
       capture(:stdout) { generator.send(*args, &block) }
-    end
-
-    def assert_gem(gem, constraint = nil, app_path = ".")
-      if constraint
-        assert_file File.join(app_path, "Gemfile"), /^\s*gem\s+["']#{gem}["'], #{constraint}$*/
-      else
-        assert_file File.join(app_path, "Gemfile"), /^\s*gem\s+["']#{gem}["']$*/
-      end
-    end
-
-    def assert_no_gem(gem, app_path = ".")
-      assert_file File.join(app_path, "Gemfile") do |content|
-        assert_no_match(gem, content)
-      end
     end
 end

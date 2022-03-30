@@ -190,6 +190,11 @@ class SkipProtectionController < ActionController::Base
   attr_accessor :skip_requested
 end
 
+class SkipProtectionWhenUnprotectedController < ActionController::Base
+  include RequestForgeryProtectionActions
+  skip_forgery_protection
+end
+
 # common test methods
 module RequestForgeryProtectionTests
   def setup
@@ -401,31 +406,6 @@ module RequestForgeryProtectionTests
     session[:_csrf_token] = token_including_url_unsafe_chars
     @controller.stub :form_authenticity_token, token_including_url_unsafe_chars do
       assert_not_blocked { post :index, params: { custom_authenticity_token: token_including_url_unsafe_chars } }
-    end
-  end
-
-  def test_should_allow_post_with_urlsafe_token_when_migrating
-    ActiveSupport::Deprecation.silence do
-      ActionController::Base.urlsafe_csrf_tokens = false
-    end
-    token_length = (ActionController::RequestForgeryProtection::AUTHENTICITY_TOKEN_LENGTH * 4.0 / 3).ceil
-    token_including_url_safe_chars = "-_".ljust(token_length, "A")
-    session[:_csrf_token] = token_including_url_safe_chars
-    @controller.stub :form_authenticity_token, token_including_url_safe_chars do
-      assert_not_blocked { post :index, params: { custom_authenticity_token: token_including_url_safe_chars } }
-    end
-  ensure
-    ActiveSupport::Deprecation.silence do
-      ActionController::Base.urlsafe_csrf_tokens = true
-    end
-  end
-
-  def test_should_warn_about_deprecation_for_urlsafe_config
-    assert_deprecated do
-      ActionController::Base.urlsafe_csrf_tokens = false
-    end
-    assert_deprecated do
-      ActionController::Base.urlsafe_csrf_tokens = true
     end
   end
 
@@ -1139,6 +1119,17 @@ class SkipProtectionControllerTest < ActionController::TestCase
 
   def assert_blocked(&block)
     assert_raises(ActionController::InvalidAuthenticityToken, &block)
+  end
+
+  def assert_not_blocked(&block)
+    assert_nothing_raised(&block)
+    assert_response :success
+  end
+end
+
+class SkipProtectionWhenUnprotectedControllerTest < ActionController::TestCase
+  def test_should_allow_skip_request_when_protection_is_not_set
+    assert_not_blocked { post :index }
   end
 
   def assert_not_blocked(&block)

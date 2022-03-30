@@ -471,7 +471,7 @@ module ApplicationTests
         assert_equal 2, Admin::Book.count
       end
 
-      test "db:schema:load and db:structure:load do not purge the existing database" do
+      test "db:schema:load does not purge the existing database" do
         rails "runner", "ActiveRecord::Base.connection.create_table(:posts) {|t| t.string :title }"
 
         app_file "db/schema.rb", <<-RUBY
@@ -721,6 +721,24 @@ module ApplicationTests
 
           repeat_output = rails "db:drop"
           assert_match(/Dropped database/, repeat_output)
+        end
+      end
+
+      test "destructive tasks are protected" do
+        add_to_config "config.active_record.protected_environments = ['development', 'test']"
+
+        require "#{app_path}/config/environment"
+
+        Dir.chdir(app_path) do
+          rails "generate", "model", "book", "title:string"
+          rails "db:migrate"
+
+          destructive_tasks = ["db:drop:all", "db:drop", "db:purge:all", "db:truncate_all", "db:purge", "db:schema:load", "db:test:purge"]
+
+          destructive_tasks.each do |task|
+            error = assert_raises("#{task} did not raise ActiveRecord::ProtectedEnvironmentError") { rails task }
+            assert_match(/ActiveRecord::ProtectedEnvironmentError/, error.message)
+          end
         end
       end
     end

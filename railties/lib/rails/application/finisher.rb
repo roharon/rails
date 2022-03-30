@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "zeitwerk"
 require "active_support/core_ext/string/inflections"
 require "active_support/core_ext/array/conversions"
 require "active_support/descendants_tracker"
@@ -35,10 +34,6 @@ module Rails
             if value.is_a?(Class) && value.singleton_class < ActiveSupport::DescendantsTracker
               ActiveSupport::Dependencies._autoloaded_tracked_classes << value
             end
-          end
-
-          autoloader.on_unload do |_cpath, value, _abspath|
-            value.before_remove_const if value.respond_to?(:before_remove_const)
           end
         end
 
