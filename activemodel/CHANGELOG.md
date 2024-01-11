@@ -1,9 +1,17 @@
-*   Use different cache namespace for proxy calls
+*   Port the `type_for_attribute` method to Active Model. Classes that include
+    `ActiveModel::Attributes` will now provide this method. This method behaves
+    the same for Active Model as it does for Active Record.
 
-    Models can currently have different attribute bodies for the same method
-    names, leading to conflicts. Adding a new namespace `:active_model_proxy`
-    fixes the issue.
+      ```ruby
+      class MyModel
+        include ActiveModel::Attributes
 
-    *Chris Salzberg*
+        attribute :my_attribute, :integer
+      end
 
-Please check [7-0-stable](https://github.com/rails/rails/blob/7-0-stable/activemodel/CHANGELOG.md) for previous changes.
+      MyModel.type_for_attribute(:my_attribute) # => #<ActiveModel::Type::Integer ...>
+      ```
+
+    *Jonathan Hefner*
+
+Please check [7-1-stable](https://github.com/rails/rails/blob/7-1-stable/activemodel/CHANGELOG.md) for previous changes.

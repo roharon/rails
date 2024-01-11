@@ -15,6 +15,8 @@ module ActionCable
       end
     end
 
+    # = Action Cable \Channel Stub
+    #
     # Stub +stream_from+ to track streams for the channel.
     # Add public aliases for +subscription_confirmation_sent?+ and
     # +subscription_rejected?+.
@@ -45,9 +47,12 @@ module ActionCable
     end
 
     class ConnectionStub
-      attr_reader :transmissions, :identifiers, :subscriptions, :logger
+      attr_reader :server, :transmissions, :identifiers, :subscriptions, :logger
+
+      delegate :pubsub, :config, to: :server
 
       def initialize(identifiers = {})
+        @server = ActionCable.server
         @transmissions = []
 
         identifiers.each do |identifier, val|
@@ -305,6 +310,28 @@ module ActionCable
         #
         def assert_has_stream_for(object)
           assert_has_stream(broadcasting_for(object))
+        end
+
+        # Asserts that the specified stream has not been started.
+        #
+        #   def test_assert_no_started_stream
+        #     subscribe
+        #     assert_has_no_stream 'messages'
+        #   end
+        #
+        def assert_has_no_stream(stream)
+          assert subscription.streams.exclude?(stream), "Stream #{stream} has been started"
+        end
+
+        # Asserts that the specified stream for a model has not started.
+        #
+        #   def test_assert_no_started_stream_for
+        #     subscribe id: 41
+        #     assert_has_no_stream_for User.find(42)
+        #   end
+        #
+        def assert_has_no_stream_for(object)
+          assert_has_no_stream(broadcasting_for(object))
         end
 
         private

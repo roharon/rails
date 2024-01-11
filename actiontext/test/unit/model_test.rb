@@ -3,6 +3,8 @@
 require "test_helper"
 
 class ActionText::ModelTest < ActiveSupport::TestCase
+  include QueryHelpers
+
   test "html conversion" do
     message = Message.new(subject: "Greetings", content: "<h1>Hello world</h1>")
     assert_equal %Q(<div class="trix-content">\n  <h1>Hello world</h1>\n</div>\n), "#{message.content}"
@@ -15,9 +17,9 @@ class ActionText::ModelTest < ActiveSupport::TestCase
 
   test "without content" do
     message = Message.create!(subject: "Greetings")
-    assert message.content.nil?
-    assert message.content.blank?
-    assert message.content.empty?
+    assert_predicate message.content, :nil?
+    assert_predicate message.content, :blank?
+    assert_predicate message.content, :empty?
     assert_not message.content?
     assert_not message.content.present?
   end
@@ -25,8 +27,8 @@ class ActionText::ModelTest < ActiveSupport::TestCase
   test "with blank content" do
     message = Message.create!(subject: "Greetings", content: "")
     assert_not message.content.nil?
-    assert message.content.blank?
-    assert message.content.empty?
+    assert_predicate message.content, :blank?
+    assert_predicate message.content, :empty?
     assert_not message.content?
     assert_not message.content.present?
   end
@@ -97,7 +99,7 @@ class ActionText::ModelTest < ActiveSupport::TestCase
   test "eager loading" do
     Message.create!(subject: "Subject", content: "<h1>Content</h1>")
 
-    message = assert_queries(2) { Message.with_rich_text_content.last }
+    message = assert_queries_count(2) { Message.with_rich_text_content.last }
     assert_no_queries do
       assert_equal "Content", message.content.to_plain_text
     end
@@ -106,7 +108,7 @@ class ActionText::ModelTest < ActiveSupport::TestCase
   test "eager loading all rich text" do
     Message.create!(subject: "Subject", content: "<h1>Content</h1>", body: "<h2>Body</h2>")
 
-    message = assert_queries(1) { Message.with_all_rich_text.last }
+    message = assert_queries_count(1) { Message.with_all_rich_text.last }
     assert_no_queries do
       assert_equal "Content", message.content.to_plain_text
       assert_equal "Body", message.body.to_plain_text

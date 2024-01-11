@@ -49,7 +49,7 @@ module I18n
         when :load_path
           I18n.load_path += value
         when :raise_on_missing_translations
-          forward_raise_on_missing_translations_config(app)
+          setup_raise_on_missing_translations_config(app)
         else
           I18n.public_send("#{setting}=", value)
         end
@@ -60,7 +60,7 @@ module I18n
       # Restore available locales check so it will take place from now on.
       I18n.enforce_available_locales = enforce_available_locales
 
-      unless app.config.cache_classes
+      if app.config.reloading_enabled?
         directories = watched_dirs_with_extensions(reloadable_paths)
         reloader = app.config.file_watcher.new(I18n.load_path.dup, directories) do
           I18n.load_path.keep_if { |p| File.exist?(p) }
@@ -77,13 +77,18 @@ module I18n
       @i18n_inited = true
     end
 
-    def self.forward_raise_on_missing_translations_config(app)
+    def self.setup_raise_on_missing_translations_config(app)
       ActiveSupport.on_load(:action_view) do
         ActionView::Helpers::TranslationHelper.raise_on_missing_translations = app.config.i18n.raise_on_missing_translations
       end
 
-      ActiveSupport.on_load(:action_controller) do
-        AbstractController::Translation.raise_on_missing_translations = app.config.i18n.raise_on_missing_translations
+      if app.config.i18n.raise_on_missing_translations &&
+          I18n.exception_handler.is_a?(I18n::ExceptionHandler) # Only override the i18n gem's default exception handler.
+
+        I18n.exception_handler = ->(exception, *) {
+          exception = exception.to_exception if exception.is_a?(I18n::MissingTranslation)
+          raise exception
+        }
       end
     end
 

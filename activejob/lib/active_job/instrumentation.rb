@@ -1,6 +1,18 @@
 # frozen_string_literal: true
 
 module ActiveJob
+  class << self
+    private
+      def instrument_enqueue_all(queue_adapter, jobs)
+        payload = { adapter: queue_adapter, jobs: jobs }
+        ActiveSupport::Notifications.instrument("enqueue_all.active_job", payload) do
+          result = yield payload
+          payload[:enqueued_count] = result
+          result
+        end
+      end
+  end
+
   module Instrumentation # :nodoc:
     extend ActiveSupport::Concern
 
@@ -21,19 +33,15 @@ module ActiveJob
       end
 
       def instrument(operation, payload = {}, &block)
-        enhanced_block = ->(event_payload) do
+        payload[:job] = self
+        payload[:adapter] = queue_adapter
+
+        ActiveSupport::Notifications.instrument("#{operation}.active_job", payload) do
           value = block.call if block
-
-          if defined?(@_halted_callback_hook_called) && @_halted_callback_hook_called
-            event_payload[:aborted] = true
-            @_halted_callback_hook_called = nil
-          end
-
+          payload[:aborted] = @_halted_callback_hook_called if defined?(@_halted_callback_hook_called)
+          @_halted_callback_hook_called = nil
           value
         end
-
-        ActiveSupport::Notifications.instrument \
-          "#{operation}.active_job", payload.merge(adapter: queue_adapter, job: self), &enhanced_block
       end
 
       def halted_callback_hook(*)

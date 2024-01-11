@@ -37,19 +37,59 @@ class ReadOnlyTest < ActiveRecord::TestCase
     assert_equal "Developer is marked as readonly", e.message
   end
 
+  def test_cant_touch_readonly_record
+    dev = Developer.find(1)
+    assert_not_predicate dev, :readonly?
+
+    dev.readonly!
+    assert_predicate dev, :readonly?
+
+    e = assert_raise(ActiveRecord::ReadOnlyRecord) { dev.touch  }
+    assert_equal "Developer is marked as readonly", e.message
+  end
+
+  def test_cant_touch_readonly_column
+    person = Person.find(1)
+
+    e = assert_raise(ActiveRecord::ActiveRecordError) { person.touch(:born_at)  }
+    assert_equal "born_at is marked as readonly", e.message
+  end
+
+  def test_cant_update_column_readonly_record
+    dev = Developer.find(1)
+    assert_not_predicate dev, :readonly?
+
+    dev.readonly!
+    assert_predicate dev, :readonly?
+
+    e = assert_raise(ActiveRecord::ReadOnlyRecord) { dev.update_column(:name, "New name")  }
+    assert_equal "Developer is marked as readonly", e.message
+  end
+
+  def test_cant_update_columns_readonly_record
+    dev = Developer.find(1)
+    assert_not_predicate dev, :readonly?
+
+    dev.readonly!
+    assert_predicate dev, :readonly?
+
+    e = assert_raise(ActiveRecord::ReadOnlyRecord) { dev.update_columns(name: "New name")  }
+    assert_equal "Developer is marked as readonly", e.message
+  end
+
   def test_find_with_readonly_option
     Developer.all.each { |d| assert_not d.readonly? }
     Developer.readonly(false).each { |d| assert_not d.readonly? }
-    Developer.readonly(true).each { |d| assert d.readonly? }
-    Developer.readonly.each { |d| assert d.readonly? }
+    Developer.readonly(true).each { |d| assert_predicate d, :readonly? }
+    Developer.readonly.each { |d| assert_predicate d, :readonly? }
   end
 
   def test_find_with_joins_option_does_not_imply_readonly
     Developer.joins("  ").each { |d| assert_not d.readonly? }
-    Developer.joins("  ").readonly(true).each { |d| assert d.readonly? }
+    Developer.joins("  ").readonly(true).each { |d| assert_predicate d, :readonly? }
 
     Developer.joins(", projects").each { |d| assert_not d.readonly? }
-    Developer.joins(", projects").readonly(true).each { |d| assert d.readonly? }
+    Developer.joins(", projects").readonly(true).each { |d| assert_predicate d, :readonly? }
   end
 
   def test_has_many_find_readonly

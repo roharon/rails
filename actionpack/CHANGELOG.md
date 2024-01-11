@@ -1,104 +1,89 @@
-*   Introduce `html:` and `screenshot:` kwargs for system test screenshot helper
+*   Add `allow_browser` to set minimum browser versions for the application.
 
-    Use these as an alternative to the already-available environment variables.
-
-    For example, this will display a screenshot in iTerm, save the HTML, and output
-    its path.
+    A browser that's blocked will by default be served the file in `public/426.html` with a HTTP status code of "426 Upgrade Required".
 
     ```ruby
-    take_screenshot(html: true, screenshot: "inline")
-    ```
+    class ApplicationController < ActionController::Base
+      # Allow only browsers natively supporting webp images, web push, badges, import maps, CSS nesting + :has
+      allow_browser versions: :modern
+    end
 
-    *Alex Ghiculescu*
+    class ApplicationController < ActionController::Base
+      # All versions of Chrome and Opera will be allowed, but no versions of "internet explorer" (ie). Safari needs to be 16.4+ and Firefox 121+.
+      allow_browser versions: { safari: 16.4, firefox: 121, ie: false }
+    end
 
-*   Allow `ActionController::Parameters#to_h` to receive a block.
-
-    *Bob Farrell*
-
-*   Allow relative redirects when `raise_on_open_redirects` is enabled
-
-    *Tom Hughes*
-
-*   Allow Content Security Policy DSL to generate for API responses.
-
-    *Tim Wade*
-
-*   Fix `authenticate_with_http_basic` to allow for missing password.
-
-    Before Rails 7.0 it was possible to handle basic authentication with only a username.
-    
-    ```ruby
-    authenticate_with_http_basic do |token, _|
-      ApiClient.authenticate(token)
+    class MessagesController < ApplicationController
+      # In addition to the browsers blocked by ApplicationController, also block Opera below 104 and Chrome below 119 for the show action.
+      allow_browser versions: { opera: 104, chrome: 119 }, only: :show
     end
     ```
 
-    This ability is restored.
+    *DHH*
 
-    *Jean Boussier*
-
-*   Fix `content_security_policy` returning invalid directives.
-
-    Directives such as `self`, `unsafe-eval` and few others were not
-    single quoted when the directive was the result of calling a lambda
-    returning an array.
+*   Add rate limiting API using Redis and the [Kredis limiter type](https://github.com/rails/kredis/blob/main/lib/kredis/types/limiter.rb).
 
     ```ruby
-    content_security_policy do |policy|
-      policy.frame_ancestors lambda { [:self, "https://example.com"] }
+    class SessionsController < ApplicationController
+      rate_limit to: 10, within: 3.minutes, only: :create
+    end
+
+    class SignupsController < ApplicationController
+      rate_limit to: 1000, within: 10.seconds,
+        by: -> { request.domain }, with: -> { redirect_to busy_controller_url, alert: "Too many signups!" }, only: :new
     end
     ```
 
-    With this fix the policy generated from above will now be valid.
+    *DHH*
 
-    *Edouard Chin*
+*   Add `image/svg+xml` to the compressible content types of ActionDispatch::Static
 
-*   Fix `skip_forgery_protection` to run without raising an error if forgery
-    protection has not been enabled / `verify_authenticity_token` is not a
-    defined callback.
+    *Georg Ledermann*
 
-    This fix prevents the Rails 7.0 Welcome Page (`/`) from raising an
-    `ArgumentError` if `default_protect_from_forgery` is false.
+*   Add instrumentation for ActionController::Live#send_stream
 
-    *Brad Trick*
+    Allows subscribing to `send_stream` events. The event payload contains the filename, disposition, and type.
 
-*   Make `redirect_to` return an empty response body.
+    *Hannah Ramadan*
 
-    Application controllers that wish to add a response body after calling
-    `redirect_to` can continue to do so.
+*   Add support for `with_routing` test helper in `ActionDispatch::IntegrationTest`
 
-    *Jon Dufresne*
+    *Gannon McGibbon*
 
-*   Use non-capturing group for subdomain matching in `ActionDispatch::HostAuthorization`
+*   Remove deprecated support to set `Rails.application.config.action_dispatch.show_exceptions` to `true` and `false`.
 
-    Since we do nothing with the captured subdomain group, we can use a non-capturing group instead.
+    *Rafael Mendonça França*
 
-    *Sam Bostock*
+*   Remove deprecated `speaker`, `vibrate`, and `vr` permissions policy directives.
 
-*   Fix `ActionController::Live` to copy the IsolatedExecutionState in the ephemeral thread.
+    *Rafael Mendonça França*
 
-    Since its inception `ActionController::Live` has been copying thread local variables
-    to keep things such as `CurrentAttributes` set from middlewares working in the controller action.
+*   Remove deprecated `Rails.application.config.action_dispatch.return_only_request_media_type_on_content_type`.
 
-    With the introduction of `IsolatedExecutionState` in 7.0, some of that global state was lost in
-    `ActionController::Live` controllers.
+    *Rafael Mendonça França*
 
-    *Jean Boussier*
+*   Deprecate `Rails.application.config.action_controller.allow_deprecated_parameters_hash_equality`.
 
-*   Fix setting `trailing_slash: true` in route definition.
+    *Rafael Mendonça França*
 
-    ```ruby
-    get '/test' => "test#index", as: :test, trailing_slash: true
+*   Remove deprecated comparison between `ActionController::Parameters` and `Hash`.
 
-    test_path() # => "/test/"
-    ```
+    *Rafael Mendonça França*
 
-    *Jean Boussier*
+*   Remove deprecated constant `AbstractController::Helpers::MissingHelperError`.
 
-*   Make `Session#merge!` stringify keys.
+    *Rafael Mendonça França*
 
-    Previously `Session#update` would, but `merge!` wouldn't.
+*   Fix a race condition that could cause a `Text file busy - chromedriver`
+    error with parallel system tests
 
-    *Drew Bragg*
+    *Matt Brictson*
 
-Please check [7-0-stable](https://github.com/rails/rails/blob/7-0-stable/actionpack/CHANGELOG.md) for previous changes.
+*   Add `racc` as a dependency since it will become a bundled gem in Ruby 3.4.0
+
+    *Hartley McGuire*
+*   Remove deprecated constant `ActionDispatch::IllegalStateError`.
+
+    *Rafael Mendonça França*
+
+Please check [7-1-stable](https://github.com/rails/rails/blob/7-1-stable/actionpack/CHANGELOG.md) for previous changes.

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 #--
-# Copyright (c) 2004-2022 David Heinemeier Hansson
+# Copyright (c) David Heinemeier Hansson
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -29,16 +29,22 @@ require "active_support/core_ext/module/attribute_accessors"
 
 require "action_pack"
 require "rack"
+require "action_dispatch/deprecator"
 
-module Rack
+module Rack # :nodoc:
   autoload :Test, "rack/test"
 end
 
+# = Action Dispatch
+#
+# Action Dispatch is a module of Action Pack.
+#
+# Action Dispatch parses information about the web request, handles
+# routing as defined by the user, and does advanced processing related to HTTP
+# such as MIME-type negotiation, decoding parameters in POST, PATCH, or PUT
+# bodies, handling HTTP caching logic, cookies and sessions.
 module ActionDispatch
   extend ActiveSupport::Autoload
-
-  class IllegalStateError < StandardError
-  end
 
   class MissingController < NameError
   end
@@ -53,6 +59,7 @@ module ActionDispatch
   end
 
   autoload_under "middleware" do
+    autoload :AssumeSSL
     autoload :HostAuthorization
     autoload :RequestId
     autoload :Callbacks
@@ -73,6 +80,7 @@ module ActionDispatch
     autoload :Static
   end
 
+  autoload :Constants
   autoload :Journey
   autoload :MiddlewareStack, "action_dispatch/middleware/stack"
   autoload :Routing
@@ -94,6 +102,19 @@ module ActionDispatch
     autoload :CookieStore,         "action_dispatch/middleware/session/cookie_store"
     autoload :MemCacheStore,       "action_dispatch/middleware/session/mem_cache_store"
     autoload :CacheStore,          "action_dispatch/middleware/session/cache_store"
+
+    def self.resolve_store(session_store) # :nodoc:
+      self.const_get(session_store.to_s.camelize)
+    rescue NameError
+      raise <<~ERROR
+        Unable to resolve session store #{session_store.inspect}.
+
+        #{session_store.inspect} resolves to ActionDispatch::Session::#{session_store.to_s.camelize},
+        but that class is undefined.
+
+        Is #{session_store.inspect} spelled correctly, and are any necessary gems installed?
+      ERROR
+    end
   end
 
   mattr_accessor :test_app
@@ -120,6 +141,6 @@ autoload :Mime, "action_dispatch/http/mime_type"
 
 ActiveSupport.on_load(:action_view) do
   ActionView::Base.default_formats ||= Mime::SET.symbols
-  ActionView::Template::Types.delegate_to Mime
+  ActionView::Template.mime_types_implementation = Mime
   ActionView::LookupContext::DetailsKey.clear
 end

@@ -110,7 +110,6 @@ npm_version = version.gsub(/\./).with_index { |s, i| i >= 2 ? "-" : s }
 
       if File.exist?("#{framework}/package.json")
         Dir.chdir("#{framework}") do
-          npm_tag = /[a-z]/.match?(version) ? "pre" : "latest"
           npm_otp = ""
           begin
             npm_otp = " --otp " + `ykman oath accounts code -s npmjs.com`.chomp
@@ -118,7 +117,15 @@ npm_version = version.gsub(/\./).with_index { |s, i| i >= 2 ? "-" : s }
             # User doesn't have ykman
           end
 
-          sh "npm publish --tag #{npm_tag}#{npm_otp}"
+          npm_tag = ""
+          if /[a-z]/.match?(version)
+            npm_tag = " --tag pre"
+          else
+            local_major_version = version.split(".", 4)[0]
+            npm_tag = " --tag v#{local_major_version}"
+          end
+
+          sh "npm publish#{npm_tag}#{npm_otp}"
         end
       end
     end
@@ -203,8 +210,8 @@ namespace :all do
     end
 
     # Replace the generated gemfile entry with the exact version.
-    substitute.call("Gemfile", /^gem 'rails.*/, "gem 'rails', '#{version}'")
-    substitute.call("Gemfile", /^# gem 'image_processing/, "gem 'image_processing")
+    substitute.call("Gemfile", /^gem "rails.*/, %{gem "rails", "#{version}"})
+    substitute.call("Gemfile", /^# gem "image_processing/, 'gem "image_processing')
     sh "bundle"
     sh "rails action_mailbox:install"
     sh "rails action_text:install"
@@ -240,8 +247,9 @@ namespace :all do
     # Permit the avatar param.
     substitute.call("app/controllers/users_controller.rb", /:admin/, ":admin, :avatar")
 
-    if ENV["EDITOR"]
-      `#{ENV["EDITOR"]} #{File.expand_path(app_name)}`
+    editor = ENV["VISUAL"] || ENV["EDITOR"]
+    if editor
+      `#{editor} #{File.expand_path(app_name)}`
     end
 
     puts "Booting a Rails server. Verify the release by:"
@@ -305,7 +313,7 @@ module Announcement
     end
 
     def rc?
-      @version =~ /rc/
+      @version.include?("rc")
     end
   end
 end

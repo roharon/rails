@@ -66,7 +66,7 @@ class HotCompatibilityTest < ActiveRecord::TestCase
           record.reload
         end
 
-        assert get_prepared_statement_cache(@klass.connection).any?,
+        assert_predicate get_prepared_statement_cache(@klass.connection), :any?,
           "expected prepared statement cache to have something in it"
 
         # add a new column
@@ -92,7 +92,7 @@ class HotCompatibilityTest < ActiveRecord::TestCase
           record.reload
         end
 
-        assert get_prepared_statement_cache(@klass.connection).any?,
+        assert_predicate get_prepared_statement_cache(@klass.connection), :any?,
           "expected prepared statement cache to have something in it"
 
         # add a new column
@@ -136,7 +136,7 @@ class HotCompatibilityTest < ActiveRecord::TestCase
             ActiveRecord::Base.connection_pool.checkin ddl_connection
           end
         ensure
-          ActiveRecord::Base.clear_all_connections!
+          ActiveRecord::Base.connection_handler.clear_all_connections!(:all)
         end
       end
     end

@@ -9,6 +9,8 @@ module ActionController
 
     class UnsafeRedirectError < StandardError; end
 
+    ILLEGAL_HEADER_VALUE_REGEX = /[\x00-\x08\x0A-\x1F]/
+
     included do
       mattr_accessor :raise_on_open_redirects, default: false
     end
@@ -21,7 +23,7 @@ module ActionController
     # * <tt>String</tt> not containing a protocol - The current protocol and host is prepended to the string.
     # * <tt>Proc</tt> - A block that will be executed in the controller's context. Should return any option accepted by +redirect_to+.
     #
-    # === Examples:
+    # === Examples
     #
     #   redirect_to action: "show", id: 5
     #   redirect_to @post
@@ -65,8 +67,8 @@ module ActionController
     #
     # === Open Redirect protection
     #
-    # By default, Rails protects against redirecting to external hosts for your app's safety, so called open redirects.
-    # Note: this was a new default in Rails 7.0, after upgrading opt-in by uncommenting the line with +raise_on_open_redirects+ in <tt>config/initializers/new_framework_defaults_7_0.rb</tt>
+    # By default, \Rails protects against redirecting to external hosts for your app's safety, so called open redirects.
+    # Note: this was a new default in \Rails 7.0, after upgrading opt-in by uncommenting the line with +raise_on_open_redirects+ in <tt>config/initializers/new_framework_defaults_7_0.rb</tt>
     #
     # Here #redirect_to automatically validates the potentially-unsafe URL:
     #
@@ -85,8 +87,12 @@ module ActionController
 
       allow_other_host = response_options.delete(:allow_other_host) { _allow_other_host }
 
-      self.status        = _extract_redirect_to_status(options, response_options)
-      self.location      = _enforce_open_redirect_protection(_compute_redirect_to_location(request, options), allow_other_host: allow_other_host)
+      self.status = _extract_redirect_to_status(options, response_options)
+
+      redirect_to_location = _compute_redirect_to_location(request, options)
+      _ensure_url_is_http_header_safe(redirect_to_location)
+
+      self.location      = _enforce_open_redirect_protection(redirect_to_location, allow_other_host: allow_other_host)
       self.response_body = ""
     end
 
@@ -117,7 +123,7 @@ module ActionController
     # * <tt>:allow_other_host</tt> - Allow or disallow redirection to the host that is different to the current host, defaults to true.
     #
     # All other options that can be passed to #redirect_to are accepted as
-    # options and the behavior is identical.
+    # options, and the behavior is identical.
     def redirect_back_or_to(fallback_location, allow_other_host: _allow_other_host, **options)
       if request.referer && (allow_other_host || _url_host_allowed?(request.referer))
         redirect_to request.referer, allow_other_host: allow_other_host, **options
@@ -148,7 +154,7 @@ module ActionController
     public :_compute_redirect_to_location
 
     # Verifies the passed +location+ is an internal URL that's safe to redirect to and returns it, or nil if not.
-    # Useful to wrap a params provided redirect URL and fallback to an alternate URL to redirect to:
+    # Useful to wrap a params provided redirect URL and fall back to an alternate URL to redirect to:
     #
     #   redirect_to url_from(params[:redirect_url]) || root_url
     #
@@ -195,9 +201,25 @@ module ActionController
       end
 
       def _url_host_allowed?(url)
-        [request.host, nil].include?(URI(url.to_s).host)
+        host = URI(url.to_s).host
+
+        return true if host == request.host
+        return false unless host.nil?
+        return false unless url.to_s.start_with?("/")
+        !url.to_s.start_with?("//")
       rescue ArgumentError, URI::Error
         false
+      end
+
+      def _ensure_url_is_http_header_safe(url)
+        # Attempt to comply with the set of valid token characters
+        # defined for an HTTP header value in
+        # https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
+        if url.match?(ILLEGAL_HEADER_VALUE_REGEX)
+          msg = "The redirect URL #{url} contains one or more illegal HTTP header field character. " \
+            "Set of legal characters defined in https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6"
+          raise UnsafeRedirectError, msg
+        end
       end
   end
 end

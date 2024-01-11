@@ -21,14 +21,14 @@ module ActiveRecord
 
       def test_create_table_without_id
         testing_table_with_only_foo_attribute do
-          assert_equal connection.columns(:testings).size, 1
+          assert_equal 1, connection.columns(:testings).size
         end
       end
 
       def test_add_column_with_primary_key_attribute
         testing_table_with_only_foo_attribute do
           connection.add_column :testings, :id, :primary_key
-          assert_equal connection.columns(:testings).size, 2
+          assert_equal 2, connection.columns(:testings).size
         end
       end
 
@@ -52,7 +52,7 @@ module ActiveRecord
 
       def test_create_table_with_defaults
         # MySQL doesn't allow defaults on TEXT or BLOB columns.
-        mysql = current_adapter?(:Mysql2Adapter)
+        mysql = current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
 
         connection.create_table :testings do |t|
           t.column :one, :string, default: "hello"
@@ -143,7 +143,7 @@ module ActiveRecord
           assert_equal "smallint", one.sql_type
           assert_equal "integer", four.sql_type
           assert_equal "bigint", eight.sql_type
-        elsif current_adapter?(:Mysql2Adapter)
+        elsif current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
           assert_match %r/\Aint/, default.sql_type
           assert_match %r/\Atinyint/, one.sql_type
           assert_match %r/\Aint/, four.sql_type
@@ -183,7 +183,7 @@ module ActiveRecord
           end
         end
 
-        assert_equal "you can't redefine the primary key column 'id'. To define a custom primary key, pass { id: false } to create_table.", error.message
+        assert_equal "you can't redefine the primary key column 'id' on 'testings'. To define a custom primary key, pass { id: false } to create_table.", error.message
       end
 
       def test_create_table_raises_when_redefining_custom_primary_key_column
@@ -193,7 +193,7 @@ module ActiveRecord
           end
         end
 
-        assert_equal "you can't redefine the primary key column 'testing_id'. To define a custom primary key, pass { id: false } to create_table.", error.message
+        assert_equal "you can't redefine the primary key column 'testing_id' on 'testings'. To define a custom primary key, pass { id: false } to create_table.", error.message
       end
 
       def test_create_table_raises_when_defining_existing_column
@@ -204,7 +204,7 @@ module ActiveRecord
           end
         end
 
-        assert_equal "you can't define an already defined column 'testing_column'.", error.message
+        assert_equal "you can't define an already defined column 'testing_column' on 'testings'.", error.message
       end
 
       def test_create_table_with_timestamps_should_create_datetime_columns
@@ -281,12 +281,12 @@ module ActiveRecord
 
         if current_adapter?(:PostgreSQLAdapter)
           assert_equal "timestamp without time zone", column.sql_type
-        elsif current_adapter?(:Mysql2Adapter)
+        elsif current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
           assert_equal "timestamp", column.sql_type
         elsif current_adapter?(:OracleAdapter)
           assert_equal "TIMESTAMP(6)", column.sql_type
         else
-          assert_equal connection.type_to_sql("datetime"), column.sql_type
+          assert_equal connection.type_to_sql("datetime(6)"), column.sql_type
         end
       end
 
@@ -301,7 +301,7 @@ module ActiveRecord
 
         if current_adapter?(:PostgreSQLAdapter)
           assert_equal "timestamp(6) without time zone", column.sql_type
-        elsif current_adapter?(:Mysql2Adapter)
+        elsif current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
           sql_type = supports_datetime_with_precision? ? "datetime(6)" : "datetime"
           assert_equal sql_type, column.sql_type
         else
@@ -337,7 +337,7 @@ module ActiveRecord
 
         if current_adapter?(:PostgreSQLAdapter)
           assert_equal "timestamp without time zone", column.sql_type
-        elsif current_adapter?(:Mysql2Adapter)
+        elsif current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
           assert_equal "timestamp", column.sql_type
         elsif current_adapter?(:OracleAdapter)
           assert_equal "TIMESTAMP(6)", column.sql_type
@@ -518,7 +518,7 @@ module ActiveRecord
         end
 
         def test_create_table_with_force_cascade_drops_dependent_objects
-          if current_adapter?(:Mysql2Adapter)
+          if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
             skip "MySQL > 5.5 does not drop dependent objects with DROP TABLE CASCADE"
           elsif current_adapter?(:SQLite3Adapter)
             skip "SQLite3 does not support DROP TABLE CASCADE syntax"

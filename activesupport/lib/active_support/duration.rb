@@ -3,9 +3,10 @@
 require "active_support/core_ext/array/conversions"
 require "active_support/core_ext/module/delegation"
 require "active_support/core_ext/object/acts_like"
-require "active_support/core_ext/string/filters"
 
 module ActiveSupport
+  # = Active Support \Duration
+  #
   # Provides accurate date and time measurements using Date#advance and
   # Time#advance, respectively. It mainly supports the methods on Numeric.
   #
@@ -13,7 +14,7 @@ module ActiveSupport
   class Duration
     class Scalar < Numeric # :nodoc:
       attr_reader :value
-      delegate :to_i, :to_f, :to_s, to: :value
+      delegate :to_i, :to_f, :to_s, to: :@value
 
       def initialize(value)
         @value = value
@@ -219,6 +220,8 @@ module ActiveSupport
           end
         end
     end
+
+    delegate :to_f, :positive?, :negative?, :zero?, :abs, to: :@value, as: Integer
 
     def initialize(value, parts, variable = nil) # :nodoc:
       @value, @parts = value, parts

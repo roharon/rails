@@ -2,6 +2,8 @@
 
 module ActiveRecord
   ###
+  # = Active Record \Result
+  #
   # This class encapsulates a result returned from calling
   # {#exec_query}[rdoc-ref:ConnectionAdapters::DatabaseStatements#exec_query]
   # on any database connection adapter. For example:
@@ -36,8 +38,12 @@ module ActiveRecord
 
     attr_reader :columns, :rows, :column_types
 
-    def self.empty # :nodoc:
-      EMPTY
+    def self.empty(async: false) # :nodoc:
+      if async
+        EMPTY_ASYNC
+      else
+        EMPTY
+      end
     end
 
     def initialize(columns, rows, column_types = {})
@@ -46,9 +52,6 @@ module ActiveRecord
       @hash_rows    = nil
       @column_types = column_types
     end
-
-    EMPTY = new([].freeze, [].freeze, {}.freeze)
-    private_constant :EMPTY
 
     # Returns true if this result set includes the column named +name+
     def includes_column?(name)
@@ -108,7 +111,7 @@ module ActiveRecord
         type = if type_overrides.is_a?(Array)
           type_overrides.first
         else
-          column_type(columns.first, type_overrides)
+          column_type(columns.first, 0, type_overrides)
         end
 
         rows.map do |(value)|
@@ -118,7 +121,7 @@ module ActiveRecord
         types = if type_overrides.is_a?(Array)
           type_overrides
         else
-          columns.map { |name| column_type(name, type_overrides) }
+          columns.map.with_index { |name, i| column_type(name, i, type_overrides) }
         end
 
         rows.map do |values|
@@ -134,10 +137,17 @@ module ActiveRecord
       @hash_rows    = nil
     end
 
+    def freeze # :nodoc:
+      hash_rows.freeze
+      super
+    end
+
     private
-      def column_type(name, type_overrides = {})
+      def column_type(name, index, type_overrides)
         type_overrides.fetch(name) do
-          column_types.fetch(name, Type.default_value)
+          column_types.fetch(index) do
+            column_types.fetch(name, Type.default_value)
+          end
         end
       end
 
@@ -181,5 +191,11 @@ module ActiveRecord
             }
           end
       end
+
+      EMPTY = new([].freeze, [].freeze, {}.freeze).freeze
+      private_constant :EMPTY
+
+      EMPTY_ASYNC = FutureResult::Complete.new(EMPTY).freeze
+      private_constant :EMPTY_ASYNC
   end
 end

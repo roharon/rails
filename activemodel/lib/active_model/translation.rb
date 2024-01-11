@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module ActiveModel
-  # == Active \Model \Translation
+  # = Active \Model \Translation
   #
-  # Provides integration between your object and the Rails internationalization
+  # Provides integration between your object and the \Rails internationalization
   # (i18n) framework.
   #
   # A minimal implementation could be:
@@ -16,7 +16,7 @@ module ActiveModel
   #   # => "My attribute"
   #
   # This also provides the required class methods for hooking into the
-  # Rails internationalization API, including being able to define a
+  # \Rails internationalization API, including being able to define a
   # class-based +i18n_scope+ and +lookup_ancestors+ to find translations in
   # parent classes.
   module Translation
@@ -35,7 +35,7 @@ module ActiveModel
       ancestors.select { |x| x.respond_to?(:model_name) }
     end
 
-    MISSING_TRANSLATION = Object.new # :nodoc:
+    MISSING_TRANSLATION = -(2**60) # :nodoc:
 
     # Transforms attribute names into a more human format, such as "First name"
     # instead of "first_name".

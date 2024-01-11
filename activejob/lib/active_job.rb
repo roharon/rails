@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 #--
-# Copyright (c) 2014-2022 David Heinemeier Hansson
+# Copyright (c) David Heinemeier Hansson
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -26,8 +26,11 @@
 require "active_support"
 require "active_support/rails"
 require "active_job/version"
+require "active_job/deprecator"
 require "global_id"
 
+# :markup: markdown
+# :include: activejob/README.md
 module ActiveJob
   extend ActiveSupport::Autoload
 
@@ -41,5 +44,24 @@ module ActiveJob
 
   autoload :TestCase
   autoload :TestHelper
-  autoload :QueryTags
+
+  def self.use_big_decimal_serializer
+    ActiveJob.deprecator.warn <<-WARNING.squish
+      Rails.application.config.active_job.use_big_decimal_serializer is deprecated and will be removed in Rails 7.3.
+    WARNING
+  end
+
+  def self.use_big_decimal_serializer=(value)
+    ActiveJob.deprecator.warn <<-WARNING.squish
+      Rails.application.config.active_job.use_big_decimal_serializer is deprecated and will be removed in Rails 7.3.
+    WARNING
+  end
+
+  ##
+  # :singleton-method:
+  #
+  # Specifies if the methods calling background job enqueue should be logged below
+  # their relevant enqueue log lines. Defaults to false.
+  singleton_class.attr_accessor :verbose_enqueue_logs
+  self.verbose_enqueue_logs = false
 end

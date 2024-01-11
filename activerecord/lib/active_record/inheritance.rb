@@ -4,7 +4,7 @@ require "active_support/inflector"
 require "active_support/core_ext/hash/indifferent_access"
 
 module ActiveRecord
-  # == Single table inheritance
+  # = Single table inheritance
   #
   # Active Record allows inheritance by storing the name of the class in a column that by
   # default is named "type" (can be changed by overwriting <tt>Base.inheritance_column</tt>).
@@ -32,8 +32,9 @@ module ActiveRecord
   # be triggered. In that case, it'll work just like normal subclasses with no special magic
   # for differentiating between them or reloading the right type with find.
   #
-  # Note, all the attributes for all the cases are kept in the same table. Read more:
-  # https://www.martinfowler.com/eaaCatalog/singleTableInheritance.html
+  # Note, all the attributes for all the cases are kept in the same table.
+  # Read more:
+  # * https://www.martinfowler.com/eaaCatalog/singleTableInheritance.html
   #
   module Inheritance
     extend ActiveSupport::Concern
@@ -93,14 +94,24 @@ module ActiveRecord
         :true == (@finder_needs_type_condition ||= descends_from_active_record? ? :false : :true)
       end
 
-      # Returns the class descending directly from ActiveRecord::Base, or
-      # an abstract class, if any, in the inheritance hierarchy.
+      # Returns the first class in the inheritance hierarchy that descends from either an
+      # abstract class or from <tt>ActiveRecord::Base</tt>.
       #
-      # If A extends ActiveRecord::Base, A.base_class will return A. If B descends from A
-      # through some arbitrarily deep hierarchy, B.base_class will return A.
+      # Consider the following behaviour:
       #
-      # If B < A and C < B and if A is an abstract_class then both B.base_class
-      # and C.base_class would return B as the answer since A is an abstract_class.
+      #   class ApplicationRecord < ActiveRecord::Base
+      #     self.abstract_class = true
+      #   end
+      #   class Shape < ApplicationRecord
+      #     self.abstract_class = true
+      #   end
+      #   Polygon = Class.new(Shape)
+      #   Square = Class.new(Polygon)
+      #
+      #   ApplicationRecord.base_class # => ApplicationRecord
+      #   Shape.base_class # => Shape
+      #   Polygon.base_class # => Polygon
+      #   Square.base_class # => Polygon
       attr_reader :base_class
 
       # Returns whether the class is a base class.
@@ -116,7 +127,7 @@ module ActiveRecord
       # true.
       # +ApplicationRecord+, for example, is generated as an abstract class.
       #
-      # Consider the following default behaviour:
+      # Consider the following default behavior:
       #
       #   Shape = Class.new(ActiveRecord::Base)
       #   Polygon = Class.new(Shape)
@@ -154,7 +165,7 @@ module ActiveRecord
 
       # Returns whether this class is an abstract class or not.
       def abstract_class?
-        defined?(@abstract_class) && @abstract_class == true
+        @abstract_class == true
       end
 
       # Sets the application record class for Active Record
@@ -208,12 +219,6 @@ module ActiveRecord
         else
           compute_type(name)
         end
-      end
-
-      def inherited(subclass)
-        subclass.set_base_class
-        subclass.instance_variable_set(:@_type_candidates_cache, Concurrent::Map.new)
-        super
       end
 
       def dup # :nodoc:
@@ -277,6 +282,15 @@ module ActiveRecord
         end
 
       private
+        def inherited(subclass)
+          super
+          subclass.set_base_class
+          subclass.instance_variable_set(:@_type_candidates_cache, Concurrent::Map.new)
+          subclass.class_eval do
+            @finder_needs_type_condition = nil
+          end
+        end
+
         # Called by +instantiate+ to decide which class to use for a new
         # record instance. For single-table inheritance, we check the record
         # for a +type+ column and return the corresponding class.

@@ -280,7 +280,7 @@ module ActiveRecord # :nodoc:
   # So it's possible to assign a logger to the class through <tt>Base.logger=</tt> which will then be used by all
   # instances in the current object space.
   class Base
-    extend ActiveModel::Naming
+    include ActiveModel::API
 
     extend ActiveSupport::Benchmarkable
     extend ActiveSupport::DescendantsTracker
@@ -304,13 +304,13 @@ module ActiveRecord # :nodoc:
     include Scoping
     include Sanitization
     include AttributeAssignment
-    include ActiveModel::Conversion
     include Integration
     include Validations
     include CounterCache
     include Attributes
     include Locking::Optimistic
     include Locking::Pessimistic
+    include Encryption::EncryptableRecord
     include AttributeMethods
     include Callbacks
     include Timestamp
@@ -325,9 +325,13 @@ module ActiveRecord # :nodoc:
     include Serialization
     include Store
     include SecureToken
+    include TokenFor
     include SignedId
     include Suppressor
-    include Encryption::EncryptableRecord
+    include Normalization
+    include Marshalling::Methods
+
+    self.param_delimiter = "_"
   end
 
   ActiveSupport.run_load_hooks(:active_record, Base)

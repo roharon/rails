@@ -1,10 +1,15 @@
 # frozen_string_literal: true
 
+require "json"
+require "bigdecimal"
 require "helper"
 require "active_job/arguments"
 require "models/person"
 require "active_support/core_ext/hash/indifferent_access"
+require "active_support/core_ext/integer/time"
+require "active_support/duration"
 require "jobs/kwargs_job"
+require "jobs/arguments_round_trip_job"
 require "support/stubs/strong_parameters"
 
 class ArgumentSerializationTest < ActiveSupport::TestCase
@@ -13,6 +18,32 @@ class ArgumentSerializationTest < ActiveSupport::TestCase
   end
 
   class ClassArgument; end
+
+  class MyClassWithPermitted
+    def self.permitted?
+    end
+  end
+
+  class MyString < String
+  end
+
+  class MyStringSerializer < ActiveJob::Serializers::ObjectSerializer
+    def serialize(argument)
+      super({ "value" => argument.to_s })
+    end
+
+    def deserialize(hash)
+      MyString.new(hash["value"])
+    end
+
+    private
+      def klass
+        MyString
+      end
+  end
+
+  class StringWithoutSerializer < String
+  end
 
   setup do
     @person = Person.find("5")
@@ -88,6 +119,32 @@ class ArgumentSerializationTest < ActiveSupport::TestCase
     )
   end
 
+  # Regression test to #48561
+  test "serialize a class with permitted? defined" do
+    assert_arguments_unchanged MyClassWithPermitted
+  end
+
+  test "serialize a String subclass object" do
+    original_serializers = ActiveJob::Serializers.serializers
+    ActiveJob::Serializers.add_serializers(MyStringSerializer)
+
+    my_string = MyString.new("foo")
+    serialized = ActiveJob::Arguments.serialize([my_string])
+    deserialized = ActiveJob::Arguments.deserialize(JSON.load(JSON.dump(serialized))).first
+    assert_instance_of MyString, deserialized
+    assert_equal my_string, deserialized
+  ensure
+    ActiveJob::Serializers._additional_serializers = original_serializers
+  end
+
+  test "serialize a String subclass object without a serializer" do
+    string_without_serializer = StringWithoutSerializer.new("foo")
+    serialized = ActiveJob::Arguments.serialize([string_without_serializer])
+    deserialized = ActiveJob::Arguments.deserialize(JSON.load(JSON.dump(serialized))).first
+    assert_instance_of String, deserialized
+    assert_equal string_without_serializer, deserialized
+  end
+
   test "serialize a hash" do
     symbol_key = { a: 1 }
     string_key = { "a" => 1 }
@@ -154,6 +211,12 @@ class ArgumentSerializationTest < ActiveSupport::TestCase
     end
   end
 
+  test "should maintain a functional duration" do
+    duration = perform_round_trip([1.year]).first
+    assert_kind_of Hash, duration.parts
+    assert_equal 2.years, duration + 1.year
+  end
+
   test "should disallow non-string/symbol hash keys" do
     assert_raises ActiveJob::SerializationError do
       ActiveJob::Arguments.serialize [ { 1 => 2 } ]
@@ -208,6 +271,8 @@ class ArgumentSerializationTest < ActiveSupport::TestCase
     end
 
     def perform_round_trip(args)
-      ActiveJob::Arguments.deserialize(ActiveJob::Arguments.serialize(args))
+      ArgumentsRoundTripJob.perform_later(*args) # Actually performed inline
+
+      JobBuffer.last_value
     end
 end

@@ -30,7 +30,7 @@ From the controller's point of view, there are three ways to create an HTTP resp
 * Call [`redirect_to`][] to send an HTTP redirect status code to the browser
 * Call [`head`][] to create a response consisting solely of HTTP headers to send back to the browser
 
-[controller.render]: https://api.rubyonrails.org/classes/AbstractController/Rendering.html#method-i-render
+[controller.render]: https://api.rubyonrails.org/classes/ActionController/Rendering.html#method-i-render
 [`redirect_to`]: https://api.rubyonrails.org/classes/ActionController/Redirecting.html#method-i-redirect_to
 [`head`]: https://api.rubyonrails.org/classes/ActionController/Head.html#method-i-head
 
@@ -105,7 +105,7 @@ NOTE: The actual rendering is done by nested classes of the module [`ActionView:
 
 ### Using `render`
 
-In most cases, the [`ActionController::Base#render`][controller.render] method does the heavy lifting of rendering your application's content for use by a browser. There are a variety of ways to customize the behavior of `render`. You can render the default view for a Rails template, or a specific template, or a file, or inline code, or nothing at all. You can render text, JSON, or XML. You can specify the content type or HTTP status of the rendered response as well.
+In most cases, the controller's [`render`][controller.render] method does the heavy lifting of rendering your application's content for use by a browser. There are a variety of ways to customize the behavior of `render`. You can render the default view for a Rails template, or a specific template, or a file, or inline code, or nothing at all. You can render text, JSON, or XML. You can specify the content type or HTTP status of the rendered response as well.
 
 TIP: If you want to see the exact results of a call to `render` without needing to inspect it in a browser, you can call `render_to_string`. This method takes exactly the same options as `render`, but it returns a string instead of sending a response back to the browser.
 
@@ -248,7 +248,7 @@ render js: "alert('Hello Rails');"
 
 This will send the supplied string to the browser with a MIME type of `text/javascript`.
 
-#### Rendering raw body
+#### Rendering Raw Body
 
 You can send a raw content back to the browser, without setting any content
 type, by using the `:body` option to `render`:
@@ -264,7 +264,7 @@ time.
 NOTE: Unless overridden, your response returned from this render option will be
 `text/plain`, as that is the default content type of Action Dispatch response.
 
-#### Rendering raw file
+#### Rendering Raw File
 
 Rails can render a raw file from an absolute path. This is useful for
 conditionally rendering static files like error pages.
@@ -281,15 +281,31 @@ since an attacker could use this action to access security sensitive files in yo
 
 TIP: `send_file` is often a faster and better option if a layout isn't required.
 
-#### Rendering objects
+#### Rendering Objects
 
-Rails can render objects responding to `:render_in`.
+Rails can render objects responding to `#render_in`. The format can be controlled by defining `#format` on the object.
 
 ```ruby
-render MyRenderable.new
+class Greeting
+  def render_in(view_context)
+    view_context.render html: "Hello, World"
+  end
+
+  def format
+    :html
+  end
+end
+
+render Greeting.new
+# => "Hello World"
 ```
 
-This calls `render_in` on the provided object with the current view context.
+This calls `render_in` on the provided object with the current view context. You can also provide the object by using the `:renderable` option to `render`:
+
+```ruby
+render renderable: Greeting.new
+# => "Hello World"
+```
 
 #### Options for `render`
 
@@ -449,15 +465,14 @@ def index
   request.variant = determine_variant
 end
 
-private
+  private
+    def determine_variant
+      variant = nil
+      # some code to determine the variant(s) to use
+      variant = :mobile if session[:use_mobile]
 
-def determine_variant
-  variant = nil
-  # some code to determine the variant(s) to use
-  variant = :mobile if session[:use_mobile]
-
-  variant
-end
+      variant
+    end
 ```
 
 #### Finding Layouts
@@ -506,7 +521,6 @@ class ProductsController < ApplicationController
     def products_layout
       @current_user.special? ? "special" : "products"
     end
-
 end
 ```
 
@@ -641,19 +655,18 @@ def show
 end
 ```
 
-If `@book.special?` evaluates to `true`, Rails will start the rendering process to dump the `@book` variable into the `special_show` view. But this will _not_ stop the rest of the code in the `show` action from running, and when Rails hits the end of the action, it will start to render the `regular_show` view - and throw an error. The solution is simple: make sure that you have only one call to `render` or `redirect` in a single code path. One thing that can help is `and return`. Here's a patched version of the method:
+If `@book.special?` evaluates to `true`, Rails will start the rendering process to dump the `@book` variable into the `special_show` view. But this will _not_ stop the rest of the code in the `show` action from running, and when Rails hits the end of the action, it will start to render the `regular_show` view - and throw an error. The solution is simple: make sure that you have only one call to `render` or `redirect` in a single code path. One thing that can help is `return`. Here's a patched version of the method:
 
 ```ruby
 def show
   @book = Book.find(params[:id])
   if @book.special?
-    render action: "special_show" and return
+    render action: "special_show"
+    return
   end
   render action: "regular_show"
 end
 ```
-
-Make sure to use `and return` instead of `&& return` because `&& return` will not work due to the operator precedence in the Ruby Language.
 
 Note that the implicit render done by ActionController detects if `render` has been called, so the following will work without errors:
 
@@ -756,7 +769,7 @@ end
 
 This would detect that there are no books with the specified ID, populate the `@books` instance variable with all the books in the model, and then directly render the `index.html.erb` template, returning it to the browser with a flash alert message to tell the user what happened.
 
-### Using `head` To Build Header-Only Responses
+### Using `head` to Build Header-Only Responses
 
 The [`head`][] method can be used to send responses with only headers to the browser. The `head` method accepts a number or symbol (see [reference table](#the-status-option)) representing an HTTP status code. The options argument is interpreted as a hash of header names and values. For example, you can return only an error header:
 
@@ -1096,10 +1109,11 @@ To render a partial as part of a view, you use the [`render`][view.render] metho
 This will render a file named `_menu.html.erb` at that point within the view being rendered. Note the leading underscore character: partials are named with a leading underscore to distinguish them from regular views, even though they are referred to without the underscore. This holds true even when you're pulling in a partial from another folder:
 
 ```html+erb
-<%= render "shared/menu" %>
+<%= render "application/menu" %>
 ```
 
-That code will pull in the partial from `app/views/shared/_menu.html.erb`.
+Since view partials rely on the same [Template Inheritance](#template-inheritance)
+as templates and layouts, that code will pull in the partial from `app/views/application/_menu.html.erb`.
 
 [view.render]: https://api.rubyonrails.org/classes/ActionView/Helpers/RenderingHelper.html#method-i-render
 
@@ -1108,14 +1122,14 @@ That code will pull in the partial from `app/views/shared/_menu.html.erb`.
 One way to use partials is to treat them as the equivalent of subroutines: as a way to move details out of a view so that you can grasp what's going on more easily. For example, you might have a view that looked like this:
 
 ```erb
-<%= render "shared/ad_banner" %>
+<%= render "application/ad_banner" %>
 
 <h1>Products</h1>
 
 <p>Here are a few of our fine products:</p>
-...
+<%# ... %>
 
-<%= render "shared/footer" %>
+<%= render "application/footer" %>
 ```
 
 Here, the `_ad_banner.html.erb` and `_footer.html.erb` partials could contain
@@ -1130,7 +1144,7 @@ definitions for several similar resources:
 * `users/index.html.erb`
 
     ```html+erb
-    <%= render "shared/search_filters", search: @q do |form| %>
+    <%= render "application/search_filters", search: @q do |form| %>
       <p>
         Name contains: <%= form.text_field :name_contains %>
       </p>
@@ -1140,14 +1154,14 @@ definitions for several similar resources:
 * `roles/index.html.erb`
 
     ```html+erb
-    <%= render "shared/search_filters", search: @q do |form| %>
+    <%= render "application/search_filters", search: @q do |form| %>
       <p>
         Title contains: <%= form.text_field :title_contains %>
       </p>
     <% end %>
     ```
 
-* `shared/_search_filters.html.erb`
+* `application/_search_filters.html.erb`
 
     ```html+erb
     <%= form_with model: search do |form| %>
@@ -1328,11 +1342,25 @@ You can also pass in arbitrary local variables to any partial you are rendering 
 
 In this case, the partial will have access to a local variable `title` with the value "Products Page".
 
-TIP: Rails also makes a counter variable available within a partial called by the collection, named after the title of the partial followed by `_counter`. For example, when rendering a collection `@products` the partial `_product.html.erb` can access the variable `product_counter` which indexes the number of times it has been rendered within the enclosing view. Note that it also applies for when the partial name was changed by using the `as:` option. For example, the counter variable for the code above would be `item_counter`.
+#### Counter Variables
 
-You can also specify a second partial to be rendered between instances of the main partial by using the `:spacer_template` option:
+Rails also makes a counter variable available within a partial called by the collection. The variable is named after the title of the partial followed by `_counter`. For example, when rendering a collection `@products` the partial `_product.html.erb` can access the variable `product_counter`. The variable indexes the number of times the partial has been rendered within the enclosing view, starting with a value of `0` on the first render.
+
+```erb
+# index.html.erb
+<%= render partial: "product", collection: @products %>
+```
+
+```erb
+# _product.html.erb
+<%= product_counter %> # 0 for the first product, 1 for the second product...
+```
+
+This also works when the partial name is changed using the `as:` option. So if you did `as: :item`, the counter variable would be `item_counter`.
 
 #### Spacer Templates
+
+You can also specify a second partial to be rendered between instances of the main partial by using the `:spacer_template` option:
 
 ```erb
 <%= render partial: @products, spacer_template: "product_ruler" %>

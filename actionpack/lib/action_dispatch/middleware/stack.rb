@@ -4,6 +4,11 @@ require "active_support/inflector/methods"
 require "active_support/dependencies"
 
 module ActionDispatch
+  # = Action Dispatch \MiddlewareStack
+  #
+  # Read more about {Rails middleware
+  # stack}[https://guides.rubyonrails.org/rails_on_rack.html#action-dispatcher-middleware-stack]
+  # in the guides.
   class MiddlewareStack
     class Middleware
       attr_reader :args, :block, :klass
@@ -20,13 +25,13 @@ module ActionDispatch
         case middleware
         when Middleware
           klass == middleware.klass
-        when Class
+        when Module
           klass == middleware
         end
       end
 
       def inspect
-        if klass.is_a?(Class)
+        if klass.is_a?(Module)
           klass.to_s
         else
           klass.class.to_s

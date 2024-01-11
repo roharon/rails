@@ -272,8 +272,8 @@ Configure basic routing:
 ```ruby
 # app/mailboxes/application_mailbox.rb
 class ApplicationMailbox < ActionMailbox::Base
-  routing /^save@/i     => :forwards
-  routing /@replies\./i => :replies
+  routing(/^save@/i     => :forwards)
+  routing(/@replies\./i => :replies)
 end
 ```
 
@@ -324,9 +324,11 @@ end
 
 ## Incineration of InboundEmails
 
-By default, an InboundEmail that has been successfully processed will be
-incinerated after 30 days. This ensures you're not holding on to people's data
-willy-nilly after they may have canceled their accounts or deleted their
+By default, an [`InboundEmail`][] that has been processed will be
+incinerated after 30 days. The InboundEmail is considered as processed
+when its status changes to delivered, failed or bounced.
+This ensures you're not holding on to people's data willy-nilly
+after they may have canceled their accounts or deleted their
 content. The intention is that after you've processed an email, you should have
 extracted all the data you needed and turned it into domain models and content
 on your side of the application. The InboundEmail simply stays in the system
@@ -338,9 +340,10 @@ by default set to `30.days`, but you can change it in your production.rb
 configuration. (Note that this far-future incineration scheduling relies on
 your job queue being able to hold jobs for that long.)
 
+[`InboundEmail`]: https://api.rubyonrails.org/classes/ActionMailbox/InboundEmail.html
 [`config.action_mailbox.incinerate_after`]: configuring.html#config-action-mailbox-incinerate-after
 
-## Working with Action Mailbox in development
+## Working with Action Mailbox in Development
 
 It's helpful to be able to test incoming emails in development without actually
 sending and receiving real emails. To accomplish this, there's a conductor
@@ -348,7 +351,7 @@ controller mounted at `/rails/conductor/action_mailbox/inbound_emails`,
 which gives you an index of all the InboundEmails in the system, their
 state of processing, and a form to create a new InboundEmail as well.
 
-## Testing mailboxes
+## Testing Mailboxes
 
 Example:
 

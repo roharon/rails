@@ -7,9 +7,13 @@ module ActiveRecord
   class ActiveRecordError < StandardError
   end
 
-  # Raised when trying to use a feature in Active Record which requires Active Job but the gem is not present.
-  class ActiveJobRequiredError < ActiveRecordError
-  end
+  # DEPRECATED: Previously raised when trying to use a feature in Active Record which
+  # requires Active Job but the gem is not present. Now raises a NameError.
+  include ActiveSupport::Deprecation::DeprecatedConstantAccessor
+  DeprecatedActiveJobRequiredError = Class.new(ActiveRecordError) # :nodoc:
+  deprecate_constant "ActiveJobRequiredError", "ActiveRecord::DeprecatedActiveJobRequiredError",
+    message: "ActiveRecord::ActiveJobRequiredError has been deprecated. If Active Job is not present, a NameError will be raised instead.",
+    deprecator: ActiveRecord.deprecator
 
   # Raised when the single-table inheritance mechanism fails to locate the subclass
   # (for example due to improper usage of column that
@@ -51,10 +55,31 @@ module ActiveRecord
   class AdapterNotFound < ActiveRecordError
   end
 
+  # Superclass for all errors raised from an Active Record adapter.
+  class AdapterError < ActiveRecordError
+    def initialize(message = nil, connection_pool: nil)
+      @connection_pool = connection_pool
+      super(message)
+    end
+
+    attr_reader :connection_pool
+  end
+
   # Raised when connection to the database could not been established (for example when
   # {ActiveRecord::Base.connection=}[rdoc-ref:ConnectionHandling#connection]
   # is given a +nil+ object).
-  class ConnectionNotEstablished < ActiveRecordError
+  class ConnectionNotEstablished < AdapterError
+    def initialize(message = nil, connection_pool: nil)
+      super(message, connection_pool: connection_pool)
+    end
+
+    def set_pool(connection_pool)
+      unless @connection_pool
+        @connection_pool = connection_pool
+      end
+
+      self
+    end
   end
 
   # Raised when a connection could not be obtained within the connection
@@ -90,7 +115,7 @@ module ActiveRecord
   # Raised when a pool was unable to get ahold of all its connections
   # to perform a "group" action such as
   # {ActiveRecord::Base.connection_pool.disconnect!}[rdoc-ref:ConnectionAdapters::ConnectionPool#disconnect!]
-  # or {ActiveRecord::Base.clear_reloadable_connections!}[rdoc-ref:ConnectionAdapters::ConnectionHandler#clear_reloadable_connections!].
+  # or {ActiveRecord::Base.connection_handler.clear_reloadable_connections!}[rdoc-ref:ConnectionAdapters::ConnectionHandler#clear_reloadable_connections!].
   class ExclusiveConnectionTimeoutError < ConnectionTimeoutError
   end
 
@@ -155,14 +180,23 @@ module ActiveRecord
   # Superclass for all database execution errors.
   #
   # Wraps the underlying database error as +cause+.
-  class StatementInvalid < ActiveRecordError
-    def initialize(message = nil, sql: nil, binds: nil)
-      super(message || $!&.message)
+  class StatementInvalid < AdapterError
+    def initialize(message = nil, sql: nil, binds: nil, connection_pool: nil)
+      super(message || $!&.message, connection_pool: connection_pool)
       @sql = sql
       @binds = binds
     end
 
     attr_reader :sql, :binds
+
+    def set_query(sql, binds)
+      unless @sql
+        @sql = sql
+        @binds = binds
+      end
+
+      self
+    end
   end
 
   # Defunct wrapper class kept for compatibility.
@@ -189,8 +223,13 @@ module ActiveRecord
       foreign_key: nil,
       target_table: nil,
       primary_key: nil,
-      primary_key_column: nil
+      primary_key_column: nil,
+      query_parser: nil,
+      connection_pool: nil
     )
+      @original_message = message
+      @query_parser = query_parser
+
       if table
         type = primary_key_column.bigint? ? :bigint : primary_key_column.type
         msg = <<~EOM.squish
@@ -208,7 +247,24 @@ module ActiveRecord
       if message
         msg << "\nOriginal message: #{message}"
       end
-      super(msg, sql: sql, binds: binds)
+
+      super(msg, sql: sql, binds: binds, connection_pool: connection_pool)
+    end
+
+    def set_query(sql, binds)
+      if @query_parser && !@sql
+        self.class.new(
+          message: @original_message,
+          sql: sql,
+          binds: binds,
+          connection_pool: @connection_pool,
+          **@query_parser.call(sql)
+        ).tap do |exception|
+          exception.set_backtrace backtrace
+        end
+      else
+        super
+      end
     end
   end
 
@@ -222,6 +278,19 @@ module ActiveRecord
 
   # Raised when values that executed are out of range.
   class RangeError < StatementInvalid
+  end
+
+  # Raised when a statement produces an SQL warning.
+  class SQLWarning < AdapterError
+    attr_reader :code, :level
+    attr_accessor :sql
+
+    def initialize(message = nil, code = nil, level = nil, sql = nil, connection_pool = nil)
+      super(message, connection_pool: connection_pool)
+      @code = code
+      @level = level
+      @sql = sql
+    end
   end
 
   # Raised when the number of placeholders in an SQL fragment passed to
@@ -242,21 +311,22 @@ module ActiveRecord
       ActiveRecord::Tasks::DatabaseTasks.create_current
     end
 
-    def initialize(message = nil)
-      super(message || "Database not found")
+    def initialize(message = nil, connection_pool: nil)
+      super(message || "Database not found", connection_pool: connection_pool)
     end
 
     class << self
       def db_error(db_name)
         NoDatabaseError.new(<<~MSG)
-          We could not find your database: #{db_name}. Which can be found in the database configuration file located at config/database.yml.
+          We could not find your database: #{db_name}. Available database configurations can be found in config/database.yml.
 
-          To resolve this issue:
+          To resolve this error:
 
-          - Did you create the database for this app, or delete it? You may need to create your database.
-          - Has the database name changed? Check your database.yml config has the correct database name.
+          - Did you not create the database, or did you delete it? To create the database, run:
 
-          To create your database, run:\n\n        bin/rails db:create
+              bin/rails db:create
+
+          - Has the database name changed? Verify that config/database.yml contains the correct database name.
         MSG
       end
     end
@@ -304,6 +374,12 @@ module ActiveRecord
   end
 
   # Raised on attempt to lazily load records that are marked as strict loading.
+  #
+  # You can resolve this error by eager loading marked records before accessing
+  # them. The
+  # {Eager Loading Associations}[https://guides.rubyonrails.org/active_record_querying.html#eager-loading-associations]
+  # guide covers solutions, such as using
+  # {ActiveRecord::Base.includes}[rdoc-ref:QueryMethods#includes].
   class StrictLoadingViolationError < ActiveRecordError
   end
 
@@ -407,12 +483,25 @@ module ActiveRecord
   # * You are joining an existing open transaction
   # * You are creating a nested (savepoint) transaction
   #
-  # The mysql2 and postgresql adapters support setting the transaction isolation level.
+  # The mysql2, trilogy, and postgresql adapters support setting the transaction isolation level.
   class TransactionIsolationError < ActiveRecordError
   end
 
   # TransactionRollbackError will be raised when a transaction is rolled
   # back by the database due to a serialization failure or a deadlock.
+  #
+  # These exceptions should not be generally rescued in nested transaction
+  # blocks, because they have side-effects in the actual enclosing transaction
+  # and internal Active Record state. They can be rescued if you are above the
+  # root transaction block, though.
+  #
+  # In that case, beware of transactional tests, however, because they run test
+  # cases in their own umbrella transaction. If you absolutely need to handle
+  # these exceptions in tests please consider disabling transactional tests in
+  # the affected test class (<tt>self.use_transactional_tests = false</tt>).
+  #
+  # Due to the aforementioned side-effects, this exception should not be raised
+  # manually by users.
   #
   # See the following:
   #
@@ -428,11 +517,17 @@ module ActiveRecord
 
   # SerializationFailure will be raised when a transaction is rolled
   # back by the database due to a serialization failure.
+  #
+  # This is a subclass of TransactionRollbackError, please make sure to check
+  # its documentation to be aware of its caveats.
   class SerializationFailure < TransactionRollbackError
   end
 
   # Deadlocked will be raised when a transaction is rolled
   # back by the database when a deadlock is encountered.
+  #
+  # This is a subclass of TransactionRollbackError, please make sure to check
+  # its documentation to be aware of its caveats.
   class Deadlocked < TransactionRollbackError
   end
 
@@ -459,6 +554,11 @@ module ActiveRecord
 
   # AdapterTimeout will be raised when database clients times out while waiting from the server.
   class AdapterTimeout < QueryAborted
+  end
+
+  # ConnectionFailed will be raised when the network connection to the
+  # database fails while sending a query or waiting for its result.
+  class ConnectionFailed < QueryAborted
   end
 
   # UnknownAttributeReference is raised when an unknown and potentially unsafe

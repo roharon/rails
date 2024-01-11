@@ -5,7 +5,7 @@ require "active_support/log_subscriber"
 module ActionView
   # = Action View Log Subscriber
   #
-  # Provides functionality so that Rails can output logs from Action View.
+  # Provides functionality so that \Rails can output logs from Action View.
   class LogSubscriber < ActiveSupport::LogSubscriber
     VIEWS_PATTERN = /^app\/views\//
 
@@ -21,6 +21,7 @@ module ActionView
         message << " (Duration: #{event.duration.round(1)}ms | Allocations: #{event.allocations})"
       end
     end
+    subscribe_log_level :render_template, :debug
 
     def render_partial(event)
       debug do
@@ -31,6 +32,7 @@ module ActionView
         message
       end
     end
+    subscribe_log_level :render_partial, :debug
 
     def render_layout(event)
       info do
@@ -38,6 +40,7 @@ module ActionView
         message << " (Duration: #{event.duration.round(1)}ms | Allocations: #{event.allocations})"
       end
     end
+    subscribe_log_level :render_layout, :info
 
     def render_collection(event)
       identifier = event.payload[:identifier] || "templates"
@@ -49,6 +52,7 @@ module ActionView
         message
       end
     end
+    subscribe_log_level :render_collection, :debug
 
     module Utils # :nodoc:
       def logger

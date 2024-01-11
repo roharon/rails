@@ -14,6 +14,8 @@ class YamlSerializationTest < ActiveRecord::TestCase
       topic = Topic.new(written_on: DateTime.now)
       assert_nothing_raised { topic.to_yaml }
     end
+  ensure
+    Topic.reset_column_information
   end
 
   def test_roundtrip
@@ -24,8 +26,8 @@ class YamlSerializationTest < ActiveRecord::TestCase
   end
 
   def test_roundtrip_serialized_column
-    topic = Topic.new(content: { omg: :lol })
-    assert_equal({ omg: :lol }, yaml_load(YAML.dump(topic)).content)
+    topic = Topic.new(content: { "omg" => "lol" })
+    assert_equal({ "omg" => "lol" }, yaml_load(YAML.dump(topic)).content)
   end
 
   def test_psych_roundtrip
@@ -61,8 +63,8 @@ class YamlSerializationTest < ActiveRecord::TestCase
   def test_new_records_remain_new_after_round_trip
     topic = Topic.new
 
-    assert topic.new_record?, "New record should be new"
-    assert yaml_load(YAML.dump(topic)).new_record?, "Record should be new after deserialization"
+    assert_predicate topic, :new_record?, "New record should be new"
+    assert_predicate yaml_load(YAML.dump(topic)), :new_record?, "Record should be new after deserialization"
 
     topic.save!
 
@@ -113,7 +115,7 @@ class YamlSerializationTest < ActiveRecord::TestCase
 
   def test_deserializing_rails_41_yaml
     error = assert_raises(RuntimeError) do
-      yaml_load(yaml_fixture("rails_4_1"))
+      yaml_load(yaml_fixture("rails_4_1_no_symbol"))
     end
 
     assert_equal "Active Record doesn't know how to load YAML with this format.", error.message

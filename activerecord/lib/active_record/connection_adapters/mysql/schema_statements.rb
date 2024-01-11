@@ -36,7 +36,7 @@ module ActiveRecord
               end
 
               if row[:Expression]
-                expression = row[:Expression]
+                expression = row[:Expression].gsub("\\'", "'")
                 expression = +"(#{expression})" unless expression.start_with?("(")
                 indexes.last[-2] << expression
                 indexes.last[-1][:expressions] ||= {}
@@ -125,6 +125,10 @@ module ActiveRecord
           256 # https://dev.mysql.com/doc/refman/en/identifiers.html
         end
 
+        def schema_creation # :nodoc:
+          MySQL::SchemaCreation.new(self)
+        end
+
         private
           CHARSETS_OF_4BYTES_MAXLEN = ["utf8mb4", "utf16", "utf16le", "utf32"]
 
@@ -150,8 +154,8 @@ module ActiveRecord
             @default_row_format
           end
 
-          def schema_creation
-            MySQL::SchemaCreation.new(self)
+          def valid_primary_key_options
+            super + [:unsigned]
           end
 
           def create_table_definition(name, **options)
@@ -159,7 +163,7 @@ module ActiveRecord
           end
 
           def default_type(table_name, field_name)
-            match = create_table_info(table_name).match(/`#{field_name}` (.+) DEFAULT ('|\d+|[A-z]+)/)
+            match = create_table_info(table_name)&.match(/`#{field_name}` (.+) DEFAULT ('|\d+|[A-z]+)/)
             default_pre = match[2] if match
 
             if default_pre == "'"
@@ -171,7 +175,7 @@ module ActiveRecord
             end
           end
 
-          def new_column_from_field(table_name, field)
+          def new_column_from_field(table_name, field, _definitions)
             field_name = field.fetch(:Field)
             type_metadata = fetch_type_metadata(field[:Type], field[:Extra])
             default, default_function = field[:Default], nil
@@ -225,14 +229,15 @@ module ActiveRecord
           def data_source_sql(name = nil, type: nil)
             scope = quoted_scope(name, type: type)
 
-            sql = +"SELECT table_name FROM (SELECT table_name, table_type FROM information_schema.tables "
-            sql << " WHERE table_schema = #{scope[:schema]}) _subquery"
-            if scope[:type] || scope[:name]
-              conditions = []
-              conditions << "_subquery.table_type = #{scope[:type]}" if scope[:type]
-              conditions << "_subquery.table_name = #{scope[:name]}" if scope[:name]
-              sql << " WHERE #{conditions.join(" AND ")}"
+            sql = +"SELECT table_name FROM information_schema.tables"
+            sql << " WHERE table_schema = #{scope[:schema]}"
+
+            if scope[:name]
+              sql << " AND table_name = #{scope[:name]}"
+              sql << " AND table_name IN (SELECT table_name FROM information_schema.tables WHERE table_schema = #{scope[:schema]})"
             end
+
+            sql << " AND table_type = #{scope[:type]}" if scope[:type]
             sql
           end
 

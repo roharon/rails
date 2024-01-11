@@ -2,6 +2,27 @@
 
 module ActiveRecord
   class FutureResult # :nodoc:
+    class Complete
+      attr_reader :result
+      delegate :empty?, :to_a, to: :result
+
+      def initialize(result)
+        @result = result
+      end
+
+      def pending?
+        false
+      end
+
+      def canceled?
+        false
+      end
+
+      def then(&block)
+        Promise::Complete.new(@result.then(&block))
+      end
+    end
+
     class EventBuffer
       def initialize(future_result, instrumenter)
         @future_result = future_result
@@ -27,6 +48,7 @@ module ActiveRecord
     Canceled = Class.new(ActiveRecordError)
 
     delegate :empty?, :to_a, to: :result
+    delegate_missing_to :result
 
     attr_reader :lock_wait
 
@@ -43,6 +65,10 @@ module ActiveRecord
       @result = nil
       @instrumenter = ActiveSupport::Notifications.instrumenter
       @event_buffer = nil
+    end
+
+    def then(&block)
+      Promise.new(self, block)
     end
 
     def schedule!(session)
@@ -95,11 +121,11 @@ module ActiveRecord
       @pending && (!@session || @session.active?)
     end
 
-    private
-      def canceled?
-        @session && !@session.active?
-      end
+    def canceled?
+      @session && !@session.active?
+    end
 
+    private
       def execute_or_wait
         if pending?
           start = Process.clock_gettime(Process::CLOCK_MONOTONIC, :float_millisecond)
@@ -124,7 +150,7 @@ module ActiveRecord
       end
 
       def exec_query(connection, *args, **kwargs)
-        connection.exec_query(*args, **kwargs)
+        connection.internal_exec_query(*args, **kwargs)
       end
 
       class SelectAll < FutureResult # :nodoc:

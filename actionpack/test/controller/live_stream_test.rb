@@ -168,6 +168,27 @@ module ActionController
         end
       end
 
+      def send_stream_with_inferred_content_type
+        send_stream(filename: "sample.csv") do |stream|
+          stream.writeln "fruit,quantity"
+          stream.writeln "apple,5"
+        end
+      end
+
+      def send_stream_with_implicit_content_type
+        send_stream(filename: "sample.csv", type: :csv) do |stream|
+          stream.writeln "fruit,quantity"
+          stream.writeln "apple,5"
+        end
+      end
+
+      def send_stream_with_explicit_content_type
+        send_stream(filename: "sample.csv", type: "text/csv") do |stream|
+          stream.writeln "fruit,quantity"
+          stream.writeln "apple,5"
+        end
+      end
+
       def blocking_stream
         response.headers["Content-Type"] = "text/event-stream"
         %w{ hello world }.each do |word|
@@ -303,9 +324,9 @@ module ActionController
     tests TestController
 
     def assert_stream_closed
-      assert response.stream.closed?, "stream should be closed"
-      assert response.committed?,     "response should be committed"
-      assert response.sent?,          "response should be sent"
+      assert_predicate response.stream, :closed?, "stream should be closed"
+      assert_predicate response, :committed?,     "response should be committed"
+      assert_predicate response, :sent?,          "response should be sent"
     end
 
     def capture_log_output
@@ -352,12 +373,55 @@ module ActionController
       assert_match "my.csv", @response.headers["Content-Disposition"]
     end
 
+    def test_send_stream_instrumentation
+      payload = nil
+      subscriber = proc { |event| payload = event.payload }
+
+      ActiveSupport::Notifications.subscribed(subscriber, "send_stream.action_controller") do
+        get :send_stream_with_explicit_content_type
+      end
+
+      assert_equal "sample.csv", payload[:filename]
+      assert_equal "attachment", payload[:disposition]
+      assert_equal "text/csv", payload[:type]
+    end
+
     def test_send_stream_with_options
       get :send_stream_with_options
       assert_equal %[{ name: "David", age: 41 }], @response.body
       assert_equal "application/json", @response.headers["Content-Type"]
       assert_match "inline", @response.headers["Content-Disposition"]
       assert_match "export", @response.headers["Content-Disposition"]
+    end
+
+    def test_send_stream_with_explicit_content_type
+      get :send_stream_with_explicit_content_type
+
+      assert_equal "fruit,quantity\napple,5\n", @response.body
+
+      content_type = @response.headers.fetch("Content-Type")
+      assert_equal String, content_type.class
+      assert_equal "text/csv", content_type
+    end
+
+    def test_send_stream_with_implicit_content_type
+      get :send_stream_with_implicit_content_type
+
+      assert_equal "fruit,quantity\napple,5\n", @response.body
+
+      content_type = @response.headers.fetch("Content-Type")
+      assert_equal String, content_type.class
+      assert_equal "text/csv", content_type
+    end
+
+    def test_send_stream_with_inferred_content_type
+      get :send_stream_with_inferred_content_type
+
+      assert_equal "fruit,quantity\napple,5\n", @response.body
+
+      content_type = @response.headers.fetch("Content-Type")
+      assert_equal String, content_type.class
+      assert_equal "text/csv", content_type
     end
 
     def test_delayed_autoload_after_write_within_interlock_hook
@@ -369,8 +433,6 @@ module ActionController
     end
 
     def test_async_stream
-      rubinius_skip "https://github.com/rubinius/rubinius/issues/2934"
-
       @controller.latch = Concurrent::CountDownLatch.new
       parts             = ["hello", "world"]
 
@@ -546,6 +608,16 @@ module ActionController
       @request.if_none_match = %(W/"#{ActiveSupport::Digest.hexdigest('123')}")
       get :with_stale
       assert_equal 304, response.status.to_i
+    end
+
+    def test_response_buffer_do_not_respond_to_to_ary
+      get :basic_stream
+      # `response.to_a` wraps the response with RackBody.
+      # RackBody is the body we return to Rack.
+      # Therefore we want to assert directly on it.
+      # The Rack spec requires bodies that cannot be
+      # buffered to return false to `respond_to?(:to_ary)`
+      assert_not response.to_a.last.respond_to? :to_ary
     end
   end
 

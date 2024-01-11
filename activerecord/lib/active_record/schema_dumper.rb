@@ -13,8 +13,7 @@ module ActiveRecord
     ##
     # :singleton-method:
     # A list of tables which should not be dumped to the schema.
-    # Acceptable values are strings as well as regexp if ActiveRecord.schema_format == :ruby.
-    # Only strings are accepted if ActiveRecord.schema_format == :sql.
+    # Acceptable values are strings and regexps.
     cattr_accessor :ignore_tables, default: []
 
     ##
@@ -29,8 +28,20 @@ module ActiveRecord
     # should not be dumped to db/schema.rb.
     cattr_accessor :chk_ignore_pattern, default: /^chk_rails_[0-9a-f]{10}$/
 
+    ##
+    # :singleton-method:
+    # Specify a custom regular expression matching exclusion constraints which name
+    # should not be dumped to db/schema.rb.
+    cattr_accessor :excl_ignore_pattern, default: /^excl_rails_[0-9a-f]{10}$/
+
+    ##
+    # :singleton-method:
+    # Specify a custom regular expression matching unique constraints which name
+    # should not be dumped to db/schema.rb.
+    cattr_accessor :unique_ignore_pattern, default: /^uniq_rails_[0-9a-f]{10}$/
+
     class << self
-      def dump(connection = ActiveRecord::Base.connection, stream = STDOUT, config = ActiveRecord::Base)
+      def dump(connection = ActiveRecord::Base.connection, stream = $stdout, config = ActiveRecord::Base)
         connection.create_schema_dumper(generate_options(config)).dump(stream)
         stream
       end
@@ -46,6 +57,7 @@ module ActiveRecord
 
     def dump(stream)
       header(stream)
+      schemas(stream)
       extensions(stream)
       types(stream)
       tables(stream)
@@ -60,6 +72,11 @@ module ActiveRecord
         @connection = connection
         @version = connection.migration_context.current_version rescue nil
         @options = options
+        @ignore_tables = [
+          ActiveRecord::Base.schema_migrations_table_name,
+          ActiveRecord::Base.internal_metadata_table_name,
+          self.class.ignore_tables
+        ].flatten
       end
 
       # turns 20170404131909 into "2017_04_04_131909"
@@ -103,6 +120,10 @@ module ActiveRecord
       def types(stream)
       end
 
+      # schemas are only supported by PostgreSQL
+      def schemas(stream)
+      end
+
       def tables(stream)
         sorted_tables = @connection.tables.sort
 
@@ -111,7 +132,7 @@ module ActiveRecord
         end
 
         # dump foreign keys at the end to make sure all dependent tables exist.
-        if @connection.supports_foreign_keys?
+        if @connection.use_foreign_keys?
           sorted_tables.each do |tbl|
             foreign_keys(tbl, stream) unless ignored?(tbl)
           end
@@ -171,12 +192,13 @@ module ActiveRecord
 
           indexes_in_create(table, tbl)
           check_constraints_in_create(table, tbl) if @connection.supports_check_constraints?
+          exclusion_constraints_in_create(table, tbl) if @connection.supports_exclusion_constraints?
+          unique_constraints_in_create(table, tbl) if @connection.supports_unique_constraints?
 
           tbl.puts "  end"
           tbl.puts
 
-          tbl.rewind
-          stream.print tbl.read
+          stream.print tbl.string
         rescue => e
           stream.puts "# Could not dump table #{table.inspect} because of following #{e.class}"
           stream.puts "#   #{e.message}"
@@ -201,6 +223,18 @@ module ActiveRecord
 
       def indexes_in_create(table, stream)
         if (indexes = @connection.indexes(table)).any?
+          if @connection.supports_exclusion_constraints? && (exclusion_constraints = @connection.exclusion_constraints(table)).any?
+            exclusion_constraint_names = exclusion_constraints.collect(&:name)
+
+            indexes = indexes.reject { |index| exclusion_constraint_names.include?(index.name) }
+          end
+
+          if @connection.supports_unique_constraints? && (unique_constraints = @connection.unique_constraints(table)).any?
+            unique_constraint_names = unique_constraints.collect(&:name)
+
+            indexes = indexes.reject { |index| unique_constraint_names.include?(index.name) }
+          end
+
           index_statements = indexes.map do |index|
             "    t.index #{index_parts(index).join(', ')}"
           end
@@ -219,6 +253,8 @@ module ActiveRecord
         index_parts << "opclass: #{format_index_parts(index.opclasses)}" if index.opclasses.present?
         index_parts << "where: #{index.where.inspect}" if index.where
         index_parts << "using: #{index.using.inspect}" if !@connection.default_index_type?(index)
+        index_parts << "include: #{index.include.inspect}" if index.include
+        index_parts << "nulls_not_distinct: #{index.nulls_not_distinct.inspect}" if index.nulls_not_distinct
         index_parts << "type: #{index.type.inspect}" if index.type
         index_parts << "comment: #{index.comment.inspect}" if index.comment
         index_parts
@@ -235,6 +271,8 @@ module ActiveRecord
               parts << "name: #{check_constraint.name.inspect}"
             end
 
+            parts << "validate: #{check_constraint.validate?.inspect}" unless check_constraint.validate?
+
             "    #{parts.join(', ')}"
           end
 
@@ -250,7 +288,7 @@ module ActiveRecord
               remove_prefix_and_suffix(foreign_key.to_table).inspect,
             ]
 
-            if foreign_key.column != @connection.foreign_key_column_for(foreign_key.to_table)
+            if foreign_key.column != @connection.foreign_key_column_for(foreign_key.to_table, "id")
               parts << "column: #{foreign_key.column.inspect}"
             end
 
@@ -265,6 +303,7 @@ module ActiveRecord
             parts << "on_update: #{foreign_key.on_update.inspect}" if foreign_key.on_update
             parts << "on_delete: #{foreign_key.on_delete.inspect}" if foreign_key.on_delete
             parts << "deferrable: #{foreign_key.deferrable.inspect}" if foreign_key.deferrable
+            parts << "validate: #{foreign_key.validate?.inspect}" unless foreign_key.validate?
 
             "  #{parts.join(', ')}"
           end
@@ -292,13 +331,17 @@ module ActiveRecord
       end
 
       def remove_prefix_and_suffix(table)
+        # This method appears at the top when profiling active_record test cases run.
+        # Avoid costly calculation when there are no prefix and suffix.
+        return table if @options[:table_name_prefix].blank? && @options[:table_name_suffix].blank?
+
         prefix = Regexp.escape(@options[:table_name_prefix].to_s)
         suffix = Regexp.escape(@options[:table_name_suffix].to_s)
         table.sub(/\A#{prefix}(.+)#{suffix}\z/, "\\1")
       end
 
       def ignored?(table_name)
-        [ActiveRecord::Base.schema_migrations_table_name, ActiveRecord::Base.internal_metadata_table_name, ignore_tables].flatten.any? do |ignored|
+        @ignore_tables.any? do |ignored|
           ignored === remove_prefix_and_suffix(table_name)
         end
       end

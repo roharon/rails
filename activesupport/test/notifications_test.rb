@@ -37,7 +37,7 @@ module Notifications
       assert event, "should have an event"
       assert_operator event.allocations, :>, 0
       assert_operator event.cpu_time, :>, 0
-      assert_operator event.idle_time, :>, 0
+      assert_operator event.idle_time, :>=, 0
       assert_operator event.duration, :>, 0
     end
 
@@ -137,6 +137,66 @@ module Notifications
       ActiveSupport::Notifications.instrument(event_name)
 
       assert_equal [Float, Float], [class_of_started, class_of_finished]
+    end
+  end
+
+  class BuildHandleTest < TestCase
+    def test_interleaved_event
+      event_name = "foo"
+      actual_times = []
+
+      ActiveSupport::Notifications.subscribe(event_name) do |name, started, finished, unique_id, data|
+        actual_times << [started, finished]
+      end
+
+      times = (1..4).map { |s| Time.new(2020, 1, 1) + s }
+
+      instrumenter = ActiveSupport::Notifications.instrumenter
+      travel_to times[0]
+      handle1 = instrumenter.build_handle(event_name, {})
+      handle2 = instrumenter.build_handle(event_name, {})
+
+      handle1.start
+      travel_to times[1]
+      handle2.start
+      travel_to times[2]
+      handle1.finish
+      travel_to times[3]
+      handle2.finish
+
+      assert_equal [
+        # from when start1 was returned, to when its state passed to finish
+        [times[0], times[2]],
+        # from when start2 was returned, to when its state passed to finish
+        [times[1], times[3]],
+      ], actual_times
+    end
+
+    def test_subscribed_interleaved_with_event
+      instrumenter = ActiveSupport::Notifications.instrumenter
+
+      name    = "foo"
+      events1 = []
+      events2 = []
+
+      callback1 = lambda { |event| events1 << event }
+      callback2 = lambda { |event| events2 << event }
+
+      ActiveSupport::Notifications.subscribed(callback1, name) do
+        handle = instrumenter.build_handle(name, {})
+        handle.start
+
+        ActiveSupport::Notifications.subscribed(callback2, name) do
+          handle.finish
+        end
+      end
+
+      assert_equal 1, events1.size
+      assert_empty events2
+
+      assert_equal name, events1[0].name
+      assert events1[0].time
+      assert events1[0].end
     end
   end
 
@@ -326,9 +386,7 @@ module Notifications
       @notifier.publish :foo
       @notifier.publish :foo
 
-      @notifier.subscribe("not_existent") do |*args|
-        @events << ActiveSupport::Notifications::Event.new(*args)
-      end
+      @notifier.subscribe("not_existent") { |event| @events << event }
 
       @notifier.publish :foo
       @notifier.publish :foo

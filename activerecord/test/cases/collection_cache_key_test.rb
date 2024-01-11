@@ -152,7 +152,7 @@ module ActiveRecord
     test "it triggers at most one query" do
       developers = Developer.where(name: "David")
 
-      assert_queries(1) { developers.cache_key }
+      assert_queries_count(1) { developers.cache_key }
       assert_no_queries { developers.cache_key }
     end
 
@@ -251,6 +251,19 @@ module ActiveRecord
 
         assert_equal developers.count.to_s, $1
         assert_equal last_developer_timestamp.to_fs(ActiveRecord::Base.cache_timestamp_format), $2
+      end
+    end
+
+    test "reset will reset cache_version" do
+      with_collection_cache_versioning do
+        developers = Developer.all
+
+        assert_equal Developer.all.cache_version, developers.cache_version
+
+        Developer.update_all(updated_at: Time.now.utc + 1.second)
+        developers.reset
+
+        assert_equal Developer.all.cache_version, developers.cache_version
       end
     end
 

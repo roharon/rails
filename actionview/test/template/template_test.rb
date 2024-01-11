@@ -21,7 +21,7 @@ class TestERBTemplate < ActiveSupport::TestCase
   class Context < ActionView::Base
     def initialize(*)
       super
-      @output_buffer = "original"
+      @output_buffer << "original"
       @virtual_path = nil
     end
 
@@ -53,17 +53,17 @@ class TestERBTemplate < ActiveSupport::TestCase
     end
 
     def my_buffer
-      @output_buffer
+      @output_buffer.to_s
     end
   end
 
   def new_template(body = "<%= hello %>", details = {})
     details = { format: :html, locals: [] }.merge details
-    ActionView::Template.new(body.dup, "hello template", details.delete(:handler) || ERBHandler, **{ virtual_path: "hello" }.merge!(details))
+    ActionView::Template.new(body.dup, "hello template", details.delete(:handler) || ERBHandler, virtual_path: "hello", **details)
   end
 
-  def render(locals = {})
-    @template.render(@context, locals)
+  def render(implicit_locals: [], **locals)
+    @template.render(@context, locals, implicit_locals: implicit_locals)
   end
 
   def setup
@@ -149,6 +149,77 @@ class TestERBTemplate < ActiveSupport::TestCase
     assert_equal "\nhello \u{fc}mlat", render
   end
 
+  def test_locals_can_be_disabled
+    error = assert_raises(ActionView::Template::Error) do
+      @template = new_template("<%# locals: () -%>")
+      render(foo: "bar")
+    end
+
+    assert_match(/no locals accepted/, error.message)
+  end
+
+  def test_locals_can_not_be_specified_with_positional_arguments
+    error = assert_raises(ActionView::Template::Error) do
+      @template = new_template("<%# locals: (foo) -%>")
+      render(foo: "bar")
+    end
+
+    assert_match(/`foo` set as non-keyword argument/, error.message)
+  end
+
+  def test_locals_can_be_specified_with_splat_arguments
+    @template = new_template("<%# locals: (**etc) -%><%= etc[:foo] %>")
+    assert_equal "bar", render(foo: "bar")
+  end
+
+  def test_locals_can_be_specified
+    @template = new_template("<%# locals: (message:) -%>\n<%= message %>")
+    assert_equal "Hello", render(message: "Hello")
+  end
+
+  def test_default_locals_can_be_specified
+    @template = new_template("<%# locals: (message: 'Hello') -%>\n<%= message %>")
+    assert_equal "Hello", render
+  end
+
+  def test_required_locals_can_be_specified
+    error = assert_raises(ActionView::Template::Error) do
+      @template = new_template("<%# locals: (message:) -%>")
+      render
+    end
+
+    assert_match(/missing local: :message/, error.message)
+  end
+
+  def test_extra_locals_raises_error
+    error = assert_raises(ActionView::Template::Error) do
+      @template = new_template("<%# locals: (message:) -%>")
+      render(message: "Hi", foo: "bar")
+    end
+
+    assert_match(/unknown local: :foo/, error.message)
+  end
+
+  def test_rails_injected_locals_does_not_raise_error_if_not_passed
+    @template = new_template("<%# locals: (message:) -%>")
+    render(message: "Hi", message_counter: 1, message_iteration: 1, implicit_locals: %i[message_counter message_iteration])
+  end
+
+  def test_rails_injected_locals_can_be_specified
+    @template = new_template("<%# locals: (message: 'Hello') -%>\n<%= message %>")
+    assert_equal "Hello", render(message: "Hello", implicit_locals: %i[message])
+  end
+
+  def test_rails_injected_locals_can_be_specified_as_kwargs
+    @template = new_template("<%# locals: (message: 'Hello', **kwargs) -%>\n<%= kwargs[:message_counter] %>-<%= kwargs[:message_iteration] %>")
+    assert_equal "1-2", render(message: "Hello", message_counter: 1, message_iteration: 2, implicit_locals: %i[message_counter message_iteration])
+  end
+
+  def test_rails_injected_locals_can_be_specified_as_required_argument
+    @template = new_template("<%# locals: (message: 'Hello', message_iteration:) -%>\n<%= message %>-<%= message_iteration %>")
+    assert_equal "Hello-2", render(message: "Hello", message_counter: 1, message_iteration: 2, implicit_locals: %i[message_counter message_iteration])
+  end
+
   # TODO: This is currently handled inside ERB. The case of explicitly
   # lying about encodings via the normal Rails API should be handled
   # inside Rails.
@@ -164,6 +235,14 @@ class TestERBTemplate < ActiveSupport::TestCase
       @template = new_template("<%# encoding: ISO-8859-1 %>hello \xFCmlat", virtual_path: nil)
       assert_equal Encoding::UTF_8, render.encoding
       assert_equal "hello \u{fc}mlat", render
+    end
+  end
+
+  def test_encoding_and_arguments_can_be_specified_with_magic_comment_in_erb
+    with_external_encoding Encoding::UTF_8 do
+      @template = new_template("<%# encoding: ISO-8859-1 %>\n<%# locals: (message: 'Hi!') %>\nhello \xFCmlat\n<%= message %>", virtual_path: nil)
+      assert_equal Encoding::UTF_8, render.encoding
+      assert_match(/hello \u{fc}mlat\nHi!/, render)
     end
   end
 

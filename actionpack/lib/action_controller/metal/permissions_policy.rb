@@ -5,7 +5,7 @@ module ActionController # :nodoc:
     extend ActiveSupport::Concern
 
     module ClassMethods
-      # Overrides parts of the globally configured Feature-Policy
+      # Overrides parts of the globally configured +Feature-Policy+
       # header:
       #
       #   class PagesController < ApplicationController
@@ -27,7 +27,7 @@ module ActionController # :nodoc:
         before_action(options) do
           if block_given?
             policy = request.permissions_policy.clone
-            yield policy
+            instance_exec(policy, &block)
             request.permissions_policy = policy
           end
         end

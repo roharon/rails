@@ -153,8 +153,8 @@ class InheritanceTest < ActiveRecord::TestCase
 
   def test_company_descends_from_active_record
     assert_not_predicate ActiveRecord::Base, :descends_from_active_record?
-    assert AbstractCompany.descends_from_active_record?, "AbstractCompany should descend from ActiveRecord::Base"
-    assert Company.descends_from_active_record?, "Company should descend from ActiveRecord::Base"
+    assert_predicate AbstractCompany, :descends_from_active_record?, "AbstractCompany should descend from ActiveRecord::Base"
+    assert_predicate Company, :descends_from_active_record?, "Company should descend from ActiveRecord::Base"
     assert_not Class.new(Company).descends_from_active_record?, "Company subclass should not descend from ActiveRecord::Base"
   end
 
@@ -468,18 +468,18 @@ class InheritanceTest < ActiveRecord::TestCase
 
   def test_eager_load_belongs_to_something_inherited
     account = Account.all.merge!(includes: :firm).find(1)
-    assert account.association(:firm).loaded?, "association was not eager loaded"
+    assert_predicate account.association(:firm), :loaded?, "association was not eager loaded"
   end
 
   def test_alt_eager_loading
     cabbage = RedCabbage.all.merge!(includes: :seller).find(4)
-    assert cabbage.association(:seller).loaded?, "association was not eager loaded"
+    assert_predicate cabbage.association(:seller), :loaded?, "association was not eager loaded"
   end
 
   def test_eager_load_belongs_to_primary_key_quoting
     c = Account.connection
     bind_param = Arel::Nodes::BindParam.new(nil)
-    assert_sql(/#{Regexp.escape(c.quote_table_name("companies.id"))} = (?:#{Regexp.escape(bind_param.to_sql)}|1)/i) do
+    assert_queries_match(/#{Regexp.escape(c.quote_table_name("companies.id"))} = (?:#{Regexp.escape(bind_param.to_sql)}|1)/i) do
       Account.all.merge!(includes: :firm).find(1)
     end
   end

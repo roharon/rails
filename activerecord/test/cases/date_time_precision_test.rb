@@ -3,8 +3,9 @@
 require "cases/helper"
 require "support/schema_dumping_helper"
 
-if supports_datetime_with_precision?
-  class DateTimePrecisionTest < ActiveRecord::TestCase
+class DateTimePrecisionTest < ActiveRecord::TestCase
+  if supports_datetime_with_precision?
+    include InTimeZone
     include SchemaDumpingHelper
     self.use_transactional_tests = false
 
@@ -45,7 +46,7 @@ if supports_datetime_with_precision?
       assert_equal 123456000, foo.updated_at.nsec
     end
 
-    unless current_adapter?(:Mysql2Adapter)
+    unless current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
       def test_no_datetime_precision_isnt_truncated_on_assignment
         @connection.create_table(:foos, force: true)
         @connection.add_column :foos, :created_at, :datetime, precision: nil
@@ -180,6 +181,15 @@ if supports_datetime_with_precision?
       assert_nil Foo.create!(happened_at: "").happened_at
     end
 
+    def test_writing_a_date_attribute
+      @connection.create_table(:foos, force: true) do |t|
+        t.datetime :happened_at
+      end
+
+      date = ::Date.new(2001, 2, 3)
+      assert_equal date, Foo.create!(happened_at: date).happened_at
+    end
+
     if current_adapter?(:PostgreSQLAdapter)
       def test_writing_a_blank_attribute_timestamptz
         with_postgresql_datetime_type(:timestamptz) do
@@ -189,6 +199,30 @@ if supports_datetime_with_precision?
 
           assert_nil Foo.create!(happened_at: nil).happened_at
           assert_nil Foo.create!(happened_at: "").happened_at
+        end
+      end
+
+      def test_writing_a_date_attribute_timestamptz
+        with_postgresql_datetime_type(:timestamptz) do
+          @connection.create_table(:foos, force: true) do |t|
+            t.datetime :happened_at
+          end
+
+          date = ::Date.new(2001, 2, 3)
+          assert_equal date, Foo.create!(happened_at: date).happened_at
+        end
+      end
+
+      def test_writing_a_time_with_zone_attribute_timestamptz
+        with_postgresql_datetime_type(:timestamptz) do
+          @connection.create_table(:foos, force: true) do |t|
+            t.datetime :happened_at
+          end
+
+          in_time_zone("Pacific Time (US & Canada)") do
+            time = Time.zone.now
+            assert_equal time.zone, Foo.new(happened_at: time).happened_at.zone
+          end
         end
       end
     end

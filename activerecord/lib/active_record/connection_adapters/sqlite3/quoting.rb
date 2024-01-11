@@ -4,6 +4,9 @@ module ActiveRecord
   module ConnectionAdapters
     module SQLite3
       module Quoting # :nodoc:
+        QUOTED_COLUMN_NAMES = Concurrent::Map.new # :nodoc:
+        QUOTED_TABLE_NAMES = Concurrent::Map.new # :nodoc:
+
         def quote_string(s)
           ::SQLite3::Database.quote(s)
         end
@@ -13,11 +16,11 @@ module ActiveRecord
         end
 
         def quote_table_name(name)
-          self.class.quoted_table_names[name] ||= super.gsub(".", "\".\"").freeze
+          QUOTED_TABLE_NAMES[name] ||= super.gsub(".", "\".\"").freeze
         end
 
         def quote_column_name(name)
-          self.class.quoted_column_names[name] ||= %Q("#{super.gsub('"', '""')}")
+          QUOTED_COLUMN_NAMES[name] ||= %Q("#{super.gsub('"', '""')}")
         end
 
         def quoted_time(value)
@@ -86,7 +89,7 @@ module ActiveRecord
           (
             (?:
               # "table_name"."column_name" | function(one or no argument)
-              ((?:\w+\.|"\w+"\.)?(?:\w+|"\w+")) | \w+\((?:|\g<2>)\)
+              ((?:\w+\.|"\w+"\.)?(?:\w+|"\w+") | \w+\((?:|\g<2>)\))
             )
             (?:(?:\s+AS)?\s+(?:\w+|"\w+"))?
           )
@@ -99,7 +102,7 @@ module ActiveRecord
           (
             (?:
               # "table_name"."column_name" | function(one or no argument)
-              ((?:\w+\.|"\w+"\.)?(?:\w+|"\w+")) | \w+\((?:|\g<2>)\)
+              ((?:\w+\.|"\w+"\.)?(?:\w+|"\w+") | \w+\((?:|\g<2>)\))
             )
             (?:\s+COLLATE\s+(?:\w+|"\w+"))?
             (?:\s+ASC|\s+DESC)?

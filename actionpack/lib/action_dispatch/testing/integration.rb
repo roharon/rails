@@ -3,7 +3,7 @@
 require "stringio"
 require "uri"
 require "rack/test"
-require "minitest"
+require "active_support/test_case"
 
 require "action_dispatch/testing/request_encoder"
 
@@ -58,7 +58,9 @@ module ActionDispatch
       # the same HTTP verb will be used when redirecting, otherwise a GET request
       # will be performed. Any arguments are passed to the
       # underlying request.
-      def follow_redirect!(**args)
+      #
+      # The HTTP_REFERER header will be set to the previous url.
+      def follow_redirect!(headers: {}, **args)
         raise "not a redirect! #{status} #{status_message}" unless redirect?
 
         method =
@@ -68,7 +70,11 @@ module ActionDispatch
             :get
           end
 
-        public_send(method, response.location, **args)
+        if [ :HTTP_REFERER, "HTTP_REFERER" ].none? { |key| headers.key? key }
+          headers["HTTP_REFERER"] = request.url
+        end
+
+        public_send(method, response.location, headers: headers, **args)
         status
       end
     end
@@ -78,9 +84,8 @@ module ActionDispatch
     # multiple sessions and run them side-by-side, you can also mimic (to some
     # limited extent) multiple simultaneous users interacting with your system.
     #
-    # Typically, you will instantiate a new session using
-    # IntegrationTest#open_session, rather than instantiating
-    # Integration::Session directly.
+    # Typically, you will instantiate a new session using Runner#open_session,
+    # rather than instantiating a \Session directly.
     class Session
       DEFAULT_HOST = "www.example.com"
 
@@ -122,7 +127,7 @@ module ActionDispatch
 
       include ActionDispatch::Routing::UrlFor
 
-      # Create and initialize a new Session instance.
+      # Create and initialize a new \Session instance.
       def initialize(app)
         super()
         @app = app
@@ -206,9 +211,10 @@ module ActionDispatch
       #   Supports +:json+ by default and will set the appropriate request headers.
       #   The headers will be merged into the Rack env hash.
       #
-      # This method is rarely used directly. Use +#get+, +#post+, or other standard
-      # HTTP methods in integration tests. +#process+ is only required when using a
-      # request method that doesn't have a method defined in the integration tests.
+      # This method is rarely used directly. Use RequestHelpers#get,
+      # RequestHelpers#post, or other standard HTTP methods in integration
+      # tests. +#process+ is only required when using a request method that
+      # doesn't have a method defined in the integration tests.
       #
       # This method returns the response status, after performing the request.
       # Furthermore, if this method was called from an ActionDispatch::IntegrationTest object,
@@ -226,7 +232,7 @@ module ActionDispatch
           method = :post
         end
 
-        if %r{://}.match?(path)
+        if path.include?("://")
           path = build_expanded_path(path) do |location|
             https! URI::HTTPS === location if location.scheme
 
@@ -252,9 +258,12 @@ module ActionDispatch
           "REQUEST_URI"    => path,
           "HTTP_HOST"      => host,
           "REMOTE_ADDR"    => remote_addr,
-          "CONTENT_TYPE"   => request_encoder.content_type,
           "HTTP_ACCEPT"    => request_encoder.accept_header || accept
         }
+
+        if request_encoder.content_type
+          request_env["CONTENT_TYPE"] = request_encoder.content_type
+        end
 
         wrapped_headers = Http::Headers.from_hash({})
         wrapped_headers.merge!(headers) if headers
@@ -422,16 +431,15 @@ module ActionDispatch
       end
 
       # Delegate unhandled messages to the current session instance.
-      def method_missing(method, *args, &block)
+      def method_missing(method, ...)
         if integration_session.respond_to?(method)
-          integration_session.public_send(method, *args, &block).tap do
+          integration_session.public_send(method, ...).tap do
             copy_session_variables!
           end
         else
           super
         end
       end
-      ruby2_keywords(:method_missing)
     end
   end
 
@@ -440,8 +448,9 @@ module ActionDispatch
   # more completely than either unit or functional tests do, exercising the
   # entire stack, from the dispatcher to the database.
   #
-  # At its simplest, you simply extend <tt>IntegrationTest</tt> and write your tests
-  # using the get/post methods:
+  # At its simplest, you simply extend <tt>IntegrationTest</tt> and write your
+  # tests using the Integration::RequestHelpers#get and/or
+  # Integration::RequestHelpers#post methods:
   #
   #   require "test_helper"
   #
@@ -612,7 +621,7 @@ module ActionDispatch
   # the request format to JSON unless overridden), sets the content type to
   # "application/json" and encodes the parameters as JSON.
   #
-  # Calling +parsed_body+ on the response parses the response body based on the
+  # Calling TestResponse#parsed_body on the response parses the response body based on the
   # last response MIME type.
   #
   # Out of the box, only <tt>:json</tt> is supported. But for any custom MIME
@@ -624,9 +633,9 @@ module ActionDispatch
   #
   # Where +param_encoder+ defines how the params should be encoded and
   # +response_parser+ defines how the response body should be parsed through
-  # +parsed_body+.
+  # TestResponse#parsed_body.
   #
-  # Consult the Rails Testing Guide for more.
+  # Consult the {Rails Testing Guide}[https://guides.rubyonrails.org/testing.html] for more.
 
   class IntegrationTest < ActiveSupport::TestCase
     include TestProcess::FixtureFile
@@ -647,6 +656,7 @@ module ActionDispatch
       included do
         include ActionDispatch::Routing::UrlFor
         include UrlOptions # don't let UrlFor override the url_options method
+        include ActionDispatch::Assertions::RoutingAssertions::WithIntegrationRouting
         ActiveSupport.run_load_hooks(:action_dispatch_integration_test, self)
         @@app = nil
       end

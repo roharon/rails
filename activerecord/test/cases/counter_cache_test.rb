@@ -2,6 +2,8 @@
 
 require "cases/helper"
 require "models/topic"
+require "models/bulb"
+require "models/person"
 require "models/car"
 require "models/aircraft"
 require "models/wheel"
@@ -11,7 +13,6 @@ require "models/category"
 require "models/categorization"
 require "models/dog"
 require "models/dog_lover"
-require "models/person"
 require "models/friendship"
 require "models/subscriber"
 require "models/subscription"
@@ -40,9 +41,21 @@ class CounterCacheTest < ActiveRecord::TestCase
     end
   end
 
+  test "increment counter by specific amount" do
+    assert_difference "@topic.reload.replies_count", +2 do
+      Topic.increment_counter(:replies_count, @topic.id, by: 2)
+    end
+  end
+
   test "decrement counter" do
     assert_difference "@topic.reload.replies_count", -1 do
       Topic.decrement_counter(:replies_count, @topic.id)
+    end
+  end
+
+  test "decrement counter by specific amount" do
+    assert_difference "@topic.reload.replies_count", -2 do
+      Topic.decrement_counter(:replies_count, @topic.id, by: 2)
     end
   end
 
@@ -111,6 +124,27 @@ class CounterCacheTest < ActiveRecord::TestCase
     end
     assert_difference "david.reload.trained_dogs_count", -1 do
       DogLover.reset_counters(david.id, :trained_dogs)
+    end
+  end
+
+  test "reset counter skips query for correct counter" do
+    Topic.reset_counters(@topic.id, :replies_count)
+
+    # SELECT "topics".* FROM "topics" WHERE "topics"."id" = ? LIMIT ?
+    # SELECT COUNT(*) FROM "topics" WHERE "topics"."type" IN (?, ?, ?, ?, ?) AND "topics"."parent_id" = ?
+    assert_queries_count(2) do
+      Topic.reset_counters(@topic.id, :replies_count)
+    end
+  end
+
+  test "reset counter performs query for correct counter with touch: true" do
+    Topic.reset_counters(@topic.id, :replies_count)
+
+    # SELECT "topics".* FROM "topics" WHERE "topics"."id" = ? LIMIT ?
+    # SELECT COUNT(*) FROM "topics" WHERE "topics"."type" IN (?, ?, ?, ?, ?) AND "topics"."parent_id" = ?
+    # UPDATE "topics" SET "updated_at" = ? WHERE "topics"."id" = ?
+    assert_queries_count(3) do
+      Topic.reset_counters(@topic.id, :replies_count, touch: true)
     end
   end
 
@@ -212,6 +246,15 @@ class CounterCacheTest < ActiveRecord::TestCase
 
     assert_difference "aircraft.reload.wheels_count", -1 do
       aircraft.wheels.first.destroy
+    end
+  end
+
+  test "removing association updates counter" do
+    michael = people(:michael)
+    car = cars(:honda)
+
+    assert_difference -> { michael.reload.cars_count }, -1 do
+      car.destroy
     end
   end
 
@@ -352,6 +395,11 @@ class CounterCacheTest < ActiveRecord::TestCase
     assert_touching @topic, :updated_at, :written_on do
       Topic.decrement_counter(:replies_count, @topic.id, touch: %i( updated_at written_on ))
     end
+  end
+
+  test "counter_cache_column?" do
+    assert Person.counter_cache_column?("cars_count")
+    assert_not Car.counter_cache_column?("cars_count")
   end
 
   private

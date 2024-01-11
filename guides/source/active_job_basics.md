@@ -79,6 +79,23 @@ end
 
 Note that you can define `perform` with as many arguments as you want.
 
+If you already have an abstract class and its name differs from `ApplicationJob`, you can pass
+the `--parent` option to indicate you want a different abstract class:
+
+```bash
+$ bin/rails generate job process_payment --parent=payment_job
+```
+
+```ruby
+class ProcessPaymentJob < PaymentJob
+  queue_as :default
+
+  def perform(*args)
+    # Do something later
+  end
+end
+```
+
 ### Enqueue the Job
 
 Enqueue a job using [`perform_later`][] and, optionally, [`set`][]. Like so:
@@ -326,7 +343,7 @@ class ApplicationJob < ActiveJob::Base
 end
 ```
 
-### Available callbacks
+### Available Callbacks
 
 * [`before_enqueue`][]
 * [`around_enqueue`][]
@@ -377,7 +394,7 @@ UserMailer.welcome(@user).deliver_later # Email will be localized to Esperanto.
 ```
 
 
-Supported types for arguments
+Supported Types for Arguments
 ----------------------------
 
 ActiveJob supports the following types of arguments by default:
@@ -398,7 +415,7 @@ ActiveJob supports the following types of arguments by default:
 
 ### GlobalID
 
-Active Job supports [GlobalID](https://github.com/rails/globalid/blob/master/README.md) for parameters. This makes it possible to pass live
+Active Job supports [GlobalID](https://github.com/rails/globalid/blob/main/README.md) for parameters. This makes it possible to pass live
 Active Record objects to your job instead of class/id pairs, which you then have
 to manually deserialize. Before, jobs would look like this:
 
@@ -496,7 +513,7 @@ If an exception from a job is not rescued, then the job is referred to as "faile
 
 [`rescue_from`]: https://api.rubyonrails.org/classes/ActiveSupport/Rescuable/ClassMethods.html#method-i-rescue_from
 
-### Retrying or Discarding failed jobs
+### Retrying or Discarding Failed Jobs
 
 A failed job will not be retried, unless configured otherwise.
 
@@ -533,3 +550,8 @@ Job Testing
 
 You can find detailed instructions on how to test your jobs in the
 [testing guide](testing.html#testing-jobs).
+
+Debugging
+---------
+
+If you need help figuring out where jobs are coming from, you can enable [verbose logging](debugging_rails_applications.html#verbose-enqueue-logs).

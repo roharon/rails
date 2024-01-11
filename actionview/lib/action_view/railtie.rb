@@ -13,6 +13,7 @@ module ActionView
     config.action_view.image_loading = nil
     config.action_view.image_decoding = nil
     config.action_view.apply_stylesheet_media_default = true
+    config.action_view.prepend_content_exfiltration_prevention = false
 
     config.eager_load_namespaces << ActionView
 
@@ -37,6 +38,17 @@ module ActionView
       default_enforce_utf8 = app.config.action_view.delete(:default_enforce_utf8)
       unless default_enforce_utf8.nil?
         ActionView::Helpers::FormTagHelper.default_enforce_utf8 = default_enforce_utf8
+      end
+    end
+
+    config.after_initialize do |app|
+      prepend_content_exfiltration_prevention = app.config.action_view.delete(:prepend_content_exfiltration_prevention)
+      ActionView::Helpers::ContentExfiltrationPreventionHelper.prepend_content_exfiltration_prevention = prepend_content_exfiltration_prevention
+    end
+
+    config.after_initialize do |app|
+      if klass = app.config.action_view.delete(:sanitizer_vendor)
+        ActionView::Helpers::SanitizeHelper.sanitizer_vendor = klass
       end
     end
 
@@ -67,6 +79,10 @@ module ActionView
       end
     end
 
+    initializer "action_view.deprecator", before: :load_environment_config do |app|
+      app.deprecators[:action_view] = ActionView.deprecator
+    end
+
     initializer "action_view.logger" do
       ActiveSupport.on_load(:action_view) { self.logger ||= Rails.logger }
     end
@@ -74,7 +90,7 @@ module ActionView
     initializer "action_view.caching" do |app|
       ActiveSupport.on_load(:action_view) do
         if app.config.action_view.cache_template_loading.nil?
-          ActionView::Resolver.caching = app.config.cache_classes
+          ActionView::Resolver.caching = !app.config.reloading_enabled?
         end
       end
     end
@@ -91,13 +107,20 @@ module ActionView
 
     config.after_initialize do |app|
       enable_caching = if app.config.action_view.cache_template_loading.nil?
-        app.config.cache_classes
+        !app.config.reloading_enabled?
       else
         app.config.action_view.cache_template_loading
       end
 
       unless enable_caching
-        app.executor.register_hook ActionView::CacheExpiry::Executor.new(watcher: app.config.file_watcher)
+        view_reloader = ActionView::CacheExpiry::ViewReloader.new(watcher: app.config.file_watcher)
+
+        app.reloaders << view_reloader
+        view_reloader.execute
+        app.reloader.to_run do
+          require_unload_lock!
+          view_reloader.execute
+        end
       end
     end
 

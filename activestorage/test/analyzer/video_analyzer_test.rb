@@ -26,7 +26,7 @@ class ActiveStorage::Analyzer::VideoAnalyzerTest < ActiveSupport::TestCase
     assert_equal 480, metadata[:width]
     assert_equal 640, metadata[:height]
     assert_equal [4, 3], metadata[:display_aspect_ratio]
-    assert_equal 90, metadata[:angle]
+    assert_includes [90, -90], metadata[:angle]
   end
 
   test "analyzing a video with rectangular samples" do
@@ -64,7 +64,7 @@ class ActiveStorage::Analyzer::VideoAnalyzerTest < ActiveSupport::TestCase
 
     assert_not_includes metadata, :width
     assert_not_includes metadata, :height
-    assert_equal 1.022000, metadata[:duration]
+    assert_includes 1.000000..1.022000, metadata[:duration]
     assert_not metadata[:video]
     assert metadata[:audio]
   end

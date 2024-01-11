@@ -16,8 +16,6 @@ class PostgresqlLtree < ActiveRecord::Base
 end
 
 class PostgresqlDataTypeTest < ActiveRecord::PostgreSQLTestCase
-  self.use_transactional_tests = false
-
   def setup
     @connection = ActiveRecord::Base.connection
 
@@ -44,6 +42,13 @@ class PostgresqlDataTypeTest < ActiveRecord::PostgreSQLTestCase
   def test_time_values
     assert_equal "P-1Y-2D", @first_time.time_interval
     assert_equal (-21.day), @first_time.scaled_time_interval
+  end
+
+  def test_update_large_time_in_seconds
+    @first_time.scaled_time_interval = 70.years.to_f
+    assert @first_time.save
+    assert @first_time.reload
+    assert_equal 70.years, @first_time.scaled_time_interval
   end
 
   def test_oid_values

@@ -50,6 +50,22 @@ module ActiveRecord
         assert_equal "http://www.foreverflying.com/octopus-black7.jpg", connection.select_value("SELECT url FROM octopi WHERE id=1")
       end
 
+      def test_rename_table_raises_for_long_table_names
+        name_limit = connection.table_name_length
+        long_name = "a" * (name_limit + 1)
+        short_name = "a" * name_limit
+
+        error = assert_raises(ArgumentError) do
+          connection.rename_table :test_models, long_name
+        end
+        assert_equal "Table name '#{long_name}' is too long; the limit is #{name_limit} characters", error.message
+
+        connection.rename_table :test_models, short_name
+        assert connection.table_exists?(short_name)
+      ensure
+        connection.drop_table short_name, if_exists: true
+      end
+
       def test_rename_table_with_an_index
         add_index :test_models, :url
 
@@ -69,48 +85,6 @@ module ActiveRecord
         rename_table :test_models, :octopi
 
         assert_equal ["special_url_idx"], connection.indexes(:octopi).map(&:name)
-      end
-
-      if current_adapter?(:PostgreSQLAdapter)
-        def test_rename_table_for_postgresql_should_also_rename_default_sequence
-          rename_table :test_models, :octopi
-
-          pk, seq = connection.pk_and_sequence_for("octopi")
-
-          assert_equal ConnectionAdapters::PostgreSQL::Name.new("public", "octopi_#{pk}_seq"), seq
-        end
-
-        def test_renaming_table_renames_primary_key
-          connection.create_table :cats, id: :uuid, default: "uuid_generate_v4()"
-          rename_table :cats, :felines
-
-          assert connection.table_exists? :felines
-          assert_not connection.table_exists? :cats
-
-          primary_key_name = connection.select_values(<<~SQL, "SCHEMA")[0]
-            SELECT c.relname
-              FROM pg_class c
-              JOIN pg_index i
-                ON c.oid = i.indexrelid
-             WHERE i.indisprimary
-               AND i.indrelid = 'felines'::regclass
-          SQL
-
-          assert_equal "felines_pkey", primary_key_name
-        ensure
-          connection.drop_table :cats, if_exists: true
-          connection.drop_table :felines, if_exists: true
-        end
-
-        def test_renaming_table_doesnt_attempt_to_rename_non_existent_sequences
-          connection.create_table :cats, id: :uuid, default: "uuid_generate_v4()"
-          assert_nothing_raised { rename_table :cats, :felines }
-          assert connection.table_exists? :felines
-          assert_not connection.table_exists? :cats
-        ensure
-          connection.drop_table :cats, if_exists: true
-          connection.drop_table :felines, if_exists: true
-        end
       end
     end
   end

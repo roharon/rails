@@ -3,11 +3,13 @@
 require "active_support/core_ext/array/access"
 require "active_support/core_ext/hash/keys"
 require "active_support/core_ext/string/output_safety"
+require "action_view/helpers/content_exfiltration_prevention_helper"
 require "action_view/helpers/tag_helper"
 
 module ActionView
-  # = Action View URL Helpers
   module Helpers # :nodoc:
+    # = Action View URL \Helpers
+    #
     # Provides a set of methods for making links and getting URLs that
     # depend on the routing subsystem (see ActionDispatch::Routing).
     # This allows you to use the same format for links in views
@@ -22,6 +24,7 @@ module ActionView
       extend ActiveSupport::Concern
 
       include TagHelper
+      include ContentExfiltrationPreventionHelper
 
       module ClassMethods
         def _url_for_modules
@@ -89,26 +92,11 @@ module ActionView
       #
       # ==== Options
       # * <tt>:data</tt> - This option can be used to add custom data attributes.
-      # * <tt>method: symbol of HTTP verb</tt> - This modifier will dynamically
-      #   create an HTML form and immediately submit the form for processing using
-      #   the HTTP verb specified. Useful for having links perform a POST operation
-      #   in dangerous actions like deleting a record (which search bots can follow
-      #   while spidering your site). Supported verbs are <tt>:post</tt>, <tt>:delete</tt>, <tt>:patch</tt>, and <tt>:put</tt>.
-      #   Note that if the user has JavaScript disabled, the request will fall back
-      #   to using GET. If <tt>href: '#'</tt> is used and the user has JavaScript
-      #   disabled clicking the link will have no effect. If you are relying on the
-      #   POST behavior, you should check for it in your controller's action by using
-      #   the request object's methods for <tt>post?</tt>, <tt>delete?</tt>, <tt>patch?</tt>, or <tt>put?</tt>.
-      # * <tt>remote: true</tt> - This will allow the unobtrusive JavaScript
-      #   driver to make an Ajax request to the URL in question instead of following
-      #   the link. The drivers each provide mechanisms for listening for the
-      #   completion of the Ajax request and performing JavaScript operations once
-      #   they're complete
       #
       # ==== Examples
       #
       # Because it relies on +url_for+, +link_to+ supports both older-style controller/action/id arguments
-      # and newer RESTful routes. Current Rails style favors RESTful routes whenever possible, so base
+      # and newer RESTful routes. Current \Rails style favors RESTful routes whenever possible, so base
       # your application on resources and use
       #
       #   link_to "Profile", profile_path(@profile)
@@ -180,31 +168,32 @@ module ActionView
       #   link_to "Nonsense search", searches_path(foo: "bar", baz: "quux")
       #   # => <a href="/searches?foo=bar&baz=quux">Nonsense search</a>
       #
-      # The only option specific to +link_to+ (<tt>:method</tt>) is used as follows:
-      #
-      #   link_to("Destroy", "http://www.example.com", method: :delete)
-      #   # => <a href='http://www.example.com' rel="nofollow" data-method="delete">Destroy</a>
-      #
-      # Also you can set any link attributes such as <tt>target</tt>, <tt>rel</tt>, <tt>type</tt>:
+      # You can set any link attributes such as <tt>target</tt>, <tt>rel</tt>, <tt>type</tt>:
       #
       #   link_to "External link", "http://www.rubyonrails.org/", target: "_blank", rel: "nofollow"
       #   # => <a href="http://www.rubyonrails.org/" target="_blank" rel="nofollow">External link</a>
       #
-      # ==== Deprecated: Rails UJS attributes
+      # ==== Turbo
       #
-      # Prior to Rails 7, Rails shipped with a JavaScript library called @rails/ujs on by default. Following Rails 7,
-      # this library is no longer on by default. This library integrated with the following options:
+      # Rails 7 ships with Turbo enabled by default. Turbo provides the following +:data+ options:
       #
-      # * <tt>confirm: 'question?'</tt> - This will allow the unobtrusive JavaScript
-      #   driver to prompt with the question specified (in this case, the
-      #   resulting text would be <tt>question?</tt>). If the user accepts, the
-      #   link is processed normally, otherwise no action is taken.
-      # * <tt>:disable_with</tt> - Value of this parameter will be used as the
-      #   name for a disabled version of the link. This feature is provided by
-      #   the unobtrusive JavaScript driver.
+      # * <tt>turbo_method: symbol of HTTP verb</tt> - Performs a Turbo link visit
+      #   with the given HTTP verb. Forms are recommended when performing non-+GET+ requests.
+      #   Only use <tt>data-turbo-method</tt> where a form is not possible.
       #
-      #   link_to "Visit Other Site", "http://www.rubyonrails.org/", data: { confirm: "Are you sure?" }
-      #   # => <a href="http://www.rubyonrails.org/" data-confirm="Are you sure?">Visit Other Site</a>
+      # * <tt>turbo_confirm: "question?"</tt> - Adds a confirmation dialog to the link with the
+      #   given value.
+      #
+      # {Consult the Turbo Handbook for more information on the options
+      # above.}[https://turbo.hotwired.dev/handbook/drive#performing-visits-with-a-different-method]
+      #
+      # ===== \Examples
+      #
+      #   link_to "Delete profile", @profile, data: { turbo_method: :delete }
+      #   # => <a href="/profiles/1" data-turbo-method="delete">Delete profile</a>
+      #
+      #   link_to "Visit Other Site", "https://rubyonrails.org/", data: { turbo_confirm: "Are you sure?" }
+      #   # => <a href="https://rubyonrails.org/" data-turbo-confirm="Are you sure?">Visit Other Site</a>
       #
       def link_to(name = nil, options = nil, html_options = nil, &block)
         html_options, options, name = options, name, block if block_given?
@@ -221,9 +210,6 @@ module ActionView
       # Generates a form containing a single button that submits to the URL created
       # by the set of +options+. This is the safest method to ensure links that
       # cause changes to your data are not triggered by search bots or accelerators.
-      # If the HTML button does not work with your layout, you can also consider
-      # using the +link_to+ method with the <tt>:method</tt> modifier as described in
-      # the +link_to+ documentation.
       #
       # You can control the form and button behavior with +html_options+. Most
       # values in +html_options+ are passed through to the button element. For
@@ -236,6 +222,10 @@ module ActionView
       #
       # The form submits a POST request by default. You can specify a different
       # HTTP verb via the +:method+ option within +html_options+.
+      #
+      # If the HTML button generated from +button_to+ does not work with your layout, you can
+      # consider using the +link_to+ method with the +data-turbo-method+
+      # attribute as described in the +link_to+ documentation.
       #
       # ==== Options
       # The +options+ hash accepts the same options as +url_for+. To generate a
@@ -255,8 +245,6 @@ module ActionView
       #   <tt>:delete</tt>, <tt>:patch</tt>, and <tt>:put</tt>. By default it will be <tt>:post</tt>.
       # * <tt>:disabled</tt> - If set to true, it will generate a disabled button.
       # * <tt>:data</tt> - This option can be used to add custom data attributes.
-      # * <tt>:remote</tt> -  If set to true, will allow the Unobtrusive JavaScript drivers to control the
-      #   submit behavior. By default this behavior is an ajax submit.
       # * <tt>:form</tt> - This hash will be form attributes
       # * <tt>:form_class</tt> - This controls the class of the form within which the submit button will
       #   be placed
@@ -298,25 +286,12 @@ module ActionView
       #   #      <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"  autocomplete="off"/>
       #   #    </form>"
       #
-      #   <%= button_to "Create", { action: "create" }, remote: true, form: { "data-type" => "json" } %>
-      #   # => "<form method="post" action="/images/create" class="button_to" data-remote="true" data-type="json">
+      #   <%= button_to "Create", { action: "create" }, form: { "data-type" => "json" } %>
+      #   # => "<form method="post" action="/images/create" class="button_to" data-type="json">
       #   #      <button type="submit">Create</button>
       #   #      <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"  autocomplete="off"/>
       #   #    </form>"
       #
-      # ==== Deprecated: Rails UJS attributes
-      #
-      # Prior to Rails 7, Rails shipped with a JavaScript library called @rails/ujs on by default. Following Rails 7,
-      # this library is no longer on by default. This library integrated with the following options:
-      #
-      # * <tt>confirm: 'question?'</tt> - This will allow the unobtrusive JavaScript
-      #   driver to prompt with the question specified (in this case, the
-      #   resulting text would be <tt>question?</tt>). If the user accepts, the
-      #   button is processed normally, otherwise no action is taken.
-      # * <tt>:disable_with</tt> - Value of this parameter will be
-      #   used as the value for a disabled version of the submit
-      #   button when the form is submitted. This feature is provided
-      #   by the unobtrusive JavaScript driver.
       def button_to(name = nil, options = nil, html_options = nil, &block)
         html_options, options = options, name if block_given?
         html_options ||= {}
@@ -369,7 +344,8 @@ module ActionView
                                        autocomplete: "off")
           end
         end
-        content_tag("form", inner_tags, form_options)
+        html = content_tag("form", inner_tags, form_options)
+        prevent_content_exfiltration(html)
       end
 
       # Creates a link tag of the given +name+ using a URL created by the set of
@@ -481,10 +457,10 @@ module ActionView
       # * <tt>:body</tt> - Preset the body of the email.
       # * <tt>:cc</tt> - Carbon Copy additional recipients on the email.
       # * <tt>:bcc</tt> - Blind Carbon Copy additional recipients on the email.
-      # * <tt>:reply_to</tt> - Preset the Reply-To field of the email.
+      # * <tt>:reply_to</tt> - Preset the +Reply-To+ field of the email.
       #
       # ==== Obfuscation
-      # Prior to Rails 4.0, +mail_to+ provided options for encoding the address
+      # Prior to \Rails 4.0, +mail_to+ provided options for encoding the address
       # in order to hinder email harvesters.  To take advantage of these options,
       # install the +actionview-encoded_mail_to+ gem.
       #
@@ -584,7 +560,7 @@ module ActionView
         # We ignore any extra parameters in the request_uri if the
         # submitted URL doesn't have any either. This lets the function
         # work with things like ?order=asc
-        # the behaviour can be disabled with check_parameters: true
+        # the behavior can be disabled with check_parameters: true
         request_uri = url_string.index("?") || check_parameters ? request.fullpath : request.path
         request_uri = URI::DEFAULT_PARSER.unescape(request_uri).force_encoding(Encoding::BINARY)
 
@@ -596,19 +572,6 @@ module ActionView
         remove_trailing_slash!(request_uri)
 
         url_string == request_uri
-      end
-
-      if RUBY_VERSION.start_with?("2.7")
-        using Module.new {
-          refine UrlHelper do
-            alias :_current_page? :current_page?
-          end
-        }
-
-        def current_page?(*args) # :nodoc:
-          options = args.pop
-          options.is_a?(Hash) ? _current_page?(*args, **options) : _current_page?(*args, options)
-        end
       end
 
       # Creates an SMS anchor link tag to the specified +phone_number+. When the
@@ -746,7 +709,7 @@ module ActionView
         end
 
         def add_method_to_attributes!(html_options, method)
-          if method_not_get_method?(method) && !html_options["rel"]&.match?(/nofollow/)
+          if method_not_get_method?(method) && !html_options["rel"]&.include?("nofollow")
             if html_options["rel"].blank?
               html_options["rel"] = "nofollow"
             else

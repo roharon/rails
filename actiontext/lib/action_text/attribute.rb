@@ -30,7 +30,16 @@ module ActionText
       #
       # * <tt>:encrypted</tt> - Pass true to encrypt the rich text attribute. The encryption will be non-deterministic. See
       #   +ActiveRecord::Encryption::EncryptableRecord.encrypts+. Default: false.
-      def has_rich_text(name, encrypted: false)
+      #
+      # * <tt>:strict_loading</tt> - Pass true to force strict loading. When
+      #   omitted, <tt>strict_loading:</tt> will be set to the value of the
+      #   <tt>strict_loading_by_default</tt> class attribute (false by default).
+      #
+      # Note: Action Text relies on polymorphic associations, which in turn store class names in the database.
+      # When renaming classes that use <tt>has_rich_text</tt>, make sure to also update the class names in the
+      # <tt>action_text_rich_texts.record_type</tt> polymorphic type column of
+      # the corresponding rows.
+      def has_rich_text(name, encrypted: false, strict_loading: strict_loading_by_default)
         class_eval <<-CODE, __FILE__, __LINE__ + 1
           def #{name}
             rich_text_#{name} || build_rich_text_#{name}
@@ -47,7 +56,8 @@ module ActionText
 
         rich_text_class_name = encrypted ? "ActionText::EncryptedRichText" : "ActionText::RichText"
         has_one :"rich_text_#{name}", -> { where(name: name) },
-          class_name: rich_text_class_name, as: :record, inverse_of: :record, autosave: true, dependent: :destroy
+          class_name: rich_text_class_name, as: :record, inverse_of: :record, autosave: true, dependent: :destroy,
+          strict_loading: strict_loading
 
         scope :"with_rich_text_#{name}", -> { includes("rich_text_#{name}") }
         scope :"with_rich_text_#{name}_and_embeds", -> { includes("rich_text_#{name}": { embeds_attachments: :blob }) }

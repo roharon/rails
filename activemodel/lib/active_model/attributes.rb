@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 module ActiveModel
+  # = Active \Model \Attributes
+  #
   # The Attributes module allows models to define attributes beyond simple Ruby
   # readers and writers. Similar to Active Record attributes, which are
   # typically inferred from the database schema, Active Model Attributes are
@@ -36,7 +38,6 @@ module ActiveModel
 
     module ClassMethods
       ##
-      # :method: attribute
       # :call-seq: attribute(name, cast_type = nil, default: nil, **options)
       #
       # Defines a model attribute. In addition to the attribute name, a cast
@@ -74,6 +75,19 @@ module ActiveModel
         attribute_types.keys
       end
 
+      ##
+      # :method: type_for_attribute
+      # :call-seq: type_for_attribute(attribute_name, &block)
+      #
+      # Returns the type of the specified attribute after applying any
+      # modifiers. This method is the only valid source of information for
+      # anything related to the types of a model's attributes. The return value
+      # of this method will implement the interface described by
+      # ActiveModel::Type::Value (though the object itself may not subclass it).
+      #--
+      # Implemented by ActiveModel::AttributeRegistration::ClassMethods#type_for_attribute.
+
+      ##
       private
         def define_method_attribute=(name, owner:)
           ActiveModel::AttributeMethods::AttrNames.define_attribute_accessor_method(

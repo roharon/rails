@@ -20,11 +20,16 @@ module ActiveRecord
       # * <tt>:scheme</tt> - A +Scheme+ with the encryption properties for this attribute.
       # * <tt>:cast_type</tt> - A type that will be used to serialize (before encrypting) and deserialize
       #   (after decrypting). ActiveModel::Type::String by default.
-      def initialize(scheme:, cast_type: ActiveModel::Type::String.new, previous_type: false)
+      def initialize(scheme:, cast_type: ActiveModel::Type::String.new, previous_type: false, default: nil)
         super()
         @scheme = scheme
         @cast_type = cast_type
         @previous_type = previous_type
+        @default = default
+      end
+
+      def cast(value)
+        cast_type.cast(value)
       end
 
       def deserialize(value)
@@ -39,6 +44,10 @@ module ActiveRecord
         end
       end
 
+      def encrypted?(value)
+        with_context { encryptor.encrypted? value }
+      end
+
       def changed_in_place?(raw_old_value, new_value)
         old_value = raw_old_value.nil? ? nil : deserialize(raw_old_value)
         old_value != new_value
@@ -47,6 +56,10 @@ module ActiveRecord
       def previous_types # :nodoc:
         @previous_types ||= {} # Memoizing on support_unencrypted_data so that we can tweak it during tests
         @previous_types[support_unencrypted_data?] ||= build_previous_types_for(previous_schemes_including_clean_text)
+      end
+
+      def support_unencrypted_data?
+        ActiveRecord::Encryption.config.support_unencrypted_data && scheme.support_unencrypted_data? && !previous_type?
       end
 
       private
@@ -70,7 +83,13 @@ module ActiveRecord
 
         def decrypt(value)
           with_context do
-            encryptor.decrypt(value, **decryption_options) unless value.nil?
+            unless value.nil?
+              if @default && @default == value
+                value
+              else
+                encryptor.decrypt(value, **decryption_options)
+              end
+            end
           end
         rescue ActiveRecord::Encryption::Errors::Base => error
           if previous_types_without_clean_text.blank?
@@ -118,10 +137,6 @@ module ActiveRecord
 
         def encryptor
           ActiveRecord::Encryption.encryptor
-        end
-
-        def support_unencrypted_data?
-          ActiveRecord::Encryption.config.support_unencrypted_data && !previous_type?
         end
 
         def encryption_options

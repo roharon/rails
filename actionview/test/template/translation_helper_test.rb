@@ -65,7 +65,7 @@ class TranslationHelperTest < ActiveSupport::TestCase
 
   def test_delegates_localize_to_i18n
     @time = Time.utc(2008, 7, 8, 12, 18, 38)
-    assert_called_with(I18n, :localize, [@time, locale: "en"]) do
+    assert_called_with(I18n, :localize, [@time], locale: "en") do
       localize @time, locale: "en"
     end
     assert_equal "Tue, 08 Jul 2008 12:18:38 +0000", localize(@time, locale: "en")
@@ -115,25 +115,6 @@ class TranslationHelperTest < ActiveSupport::TestCase
 
     expected = '<span class="translation_missing" title="translation missing: en.scoped.translations.missing, year: 2015">Missing</span>'
     assert_equal expected, translate(:"translations.missing", year: "2015", scope: %i(scoped))
-  end
-
-  def test_raises_missing_translation_message_with_raise_config_option
-    ActionView::Helpers::TranslationHelper.raise_on_missing_translations = true
-
-    assert_raise(I18n::MissingTranslationData) do
-      translate("translations.missing")
-    end
-  ensure
-    ActionView::Helpers::TranslationHelper.raise_on_missing_translations = false
-  end
-
-  def test_raise_arg_overrides_raise_config_option
-    ActionView::Helpers::TranslationHelper.raise_on_missing_translations = true
-
-    expected = "translation missing: en.translations.missing"
-    assert_equal expected, translate(:"translations.missing", raise: false)
-  ensure
-    ActionView::Helpers::TranslationHelper.raise_on_missing_translations = false
   end
 
   def test_raises_missing_translation_message_with_raise_option
@@ -404,5 +385,27 @@ class TranslationHelperTest < ActiveSupport::TestCase
     options = {}
     translate(:"translations.missing", **options)
     assert_equal({}, options)
+  end
+
+  def test_translate_caching_backend
+    caching_backend = Class.new(I18n::Backend::Simple) do
+      include I18n::Backend::Cache
+    end
+
+    previous_backend = I18n.backend
+    previous_cache_store = I18n.cache_store
+
+    I18n.backend = caching_backend.new
+    I18n.backend.store_translations(:en, translations: { foo: "Foo" })
+    I18n.cache_store = ActiveSupport::Cache.lookup_store(:memory_store)
+
+    assert_equal "Foo", translate(:"translations.foo")
+
+    expected = '<span class="translation_missing" title="translation missing: en.translations.missing">Missing</span>'
+    assert_equal expected, translate(:"translations.missing")
+    assert_equal expected, translate(:"translations.missing") # returns cached translation
+  ensure
+    I18n.backend = previous_backend
+    I18n.cache_store = previous_cache_store
   end
 end

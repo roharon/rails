@@ -83,6 +83,18 @@ module ActiveRecord
         assert_equal 0, active_connections(pool).size
       end
 
+      def test_new_connection_no_query
+        skip("Can't test with in-memory dbs") if in_memory_db?
+        assert_equal 0, pool.connections.size
+        pool.with_connection { |_conn| } # warm the schema cache
+        pool.flush(0)
+        assert_equal 0, pool.connections.size
+
+        assert_no_queries do
+          pool.with_connection { |_conn| }
+        end
+      end
+
       def test_active_connection_in_use
         assert_not_predicate pool, :active_connection?
         main_thread = pool.connection
@@ -98,9 +110,10 @@ module ActiveRecord
         @pool.checkout_timeout = 0.001 # no need to delay test suite by waiting the whole full default timeout
         @pool.size.times { assert @pool.checkout }
 
-        assert_raises(ConnectionTimeoutError) do
+        error = assert_raises(ConnectionTimeoutError) do
           @pool.checkout
         end
+        assert_equal @pool, error.connection_pool
       end
 
       def test_full_pool_blocks
@@ -197,6 +210,30 @@ module ActiveRecord
         child.terminate
         child.join
         @pool.reap
+
+        assert_equal 1, active_connections(@pool).size
+      ensure
+        @pool.connections.each { |conn| conn.close if conn.in_use? }
+      end
+
+      def test_inactive_are_returned_from_dead_thread
+        ready = Concurrent::CountDownLatch.new
+        @pool.instance_variable_set(:@size, 1)
+
+        child = new_thread do
+          @pool.checkout
+          ready.count_down
+          stop_thread
+        end
+
+        pass_to(child) until ready.wait(0)
+
+        assert_equal 1, active_connections(@pool).size
+
+        child.terminate
+        child.join
+
+        @pool.checkout
 
         assert_equal 1, active_connections(@pool).size
       ensure
@@ -326,7 +363,7 @@ module ActiveRecord
         assert_not_predicate @pool, :active_connection?
       end
 
-      def test_checkout_behaviour
+      def test_checkout_behavior
         pool = ConnectionPool.new(@pool_config)
         main_connection = pool.connection
         assert_not_nil main_connection
@@ -378,12 +415,18 @@ module ActiveRecord
         mutex = Mutex.new
         order = []
         errors = []
+        dispose_held_connections = Concurrent::Event.new
 
         threads = expected.map do |i|
           t = new_thread {
             begin
               @pool.checkout # never checked back in
               mutex.synchronize { order << i }
+
+              # if the thread terminates, its connection may be
+              # reclaimed by the pool, so we need to hold on to it
+              # until we're done trickling in connections
+              dispose_held_connections.wait
             rescue => e
               mutex.synchronize { errors << e }
             end
@@ -395,6 +438,7 @@ module ActiveRecord
         # this should wake up the waiting threads one by one in order
         conns.each { |conn| @pool.checkin(conn); sleep 0.1 }
 
+        dispose_held_connections.set
         threads.each(&:join)
 
         raise errors.first if errors.any?
@@ -417,12 +461,15 @@ module ActiveRecord
         mutex = Mutex.new
         successes = []    # threads that successfully got a connection
         errors = []
+        dispose_held_connections = Concurrent::Event.new
 
         make_thread = proc do |i|
           t = new_thread {
             begin
               @pool.checkout # never checked back in
               mutex.synchronize { successes << i }
+
+              dispose_held_connections.wait
             rescue => e
               mutex.synchronize { errors << e }
             end
@@ -453,6 +500,7 @@ module ActiveRecord
         winners = mutex.synchronize { successes.dup }
         checkin.call(group2.size)         # should wake up everyone remaining
 
+        dispose_held_connections.set
         group1.each(&:join)
         group2.each(&:join)
 
@@ -508,10 +556,12 @@ module ActiveRecord
 
         @connection_test_model_class.establish_connection :arunit
 
-        assert_equal [:config, :shard, :spec_name], payloads[0].keys.sort
-        assert_equal @connection_test_model_class.name, payloads[0][:spec_name]
+        assert_equal [:config, :connection_name, :role, :shard], payloads[0].keys.sort
+        assert_equal @connection_test_model_class.name, payloads[0][:connection_name]
         assert_equal ActiveRecord::Base.default_shard, payloads[0][:shard]
+        assert_equal :writing, payloads[0][:role]
       ensure
+        @connection_test_model_class.remove_connection
         ActiveSupport::Notifications.unsubscribe(subscription) if subscription
       end
 
@@ -520,24 +570,29 @@ module ActiveRecord
         subscription = ActiveSupport::Notifications.subscribe("!connection.active_record") do |name, started, finished, unique_id, payload|
           payloads << payload
         end
-        @connection_test_model_class.connects_to shards: { shard_two: { writing: :arunit } }
+        @connection_test_model_class.connects_to shards: { default: { writing: :arunit } }
 
-        assert_equal [:config, :shard, :spec_name], payloads[0].keys.sort
-        assert_equal @connection_test_model_class.name, payloads[0][:spec_name]
-        assert_equal :shard_two, payloads[0][:shard]
+        assert_equal [:config, :connection_name, :role, :shard], payloads[0].keys.sort
+        assert_equal @connection_test_model_class.name, payloads[0][:connection_name]
+        assert_equal :default, payloads[0][:shard]
+        assert_equal :writing, payloads[0][:role]
       ensure
+        @connection_test_model_class.remove_connection
         ActiveSupport::Notifications.unsubscribe(subscription) if subscription
       end
 
       def test_pool_sets_connection_schema_cache
         connection = pool.checkout
-        schema_cache = SchemaCache.new connection
-        schema_cache.add(:posts)
-        pool.schema_cache = schema_cache
+        connection.schema_cache.add(:posts)
 
         pool.with_connection do |conn|
-          assert_equal pool.schema_cache.size, conn.schema_cache.size
-          assert_same pool.schema_cache.columns(:posts), conn.schema_cache.columns(:posts)
+          # We've retrieved a second, distinct, connection from the pool
+          assert_not_same connection, conn
+
+          # But the new connection can already see the schema cache
+          # entry we added above
+          assert_equal connection.schema_cache.size, conn.schema_cache.size
+          assert_same connection.schema_cache.columns(:posts), conn.schema_cache.columns(:posts)
         end
 
         pool.checkin connection
@@ -585,9 +640,10 @@ module ActiveRecord
         @pool.checkout_timeout = 0.001 # no need to delay test suite by waiting the whole full default timeout
         [:disconnect, :clear_reloadable_connections].each do |group_action_method|
           @pool.with_connection do |connection|
-            assert_raises(ExclusiveConnectionTimeoutError) do
+            error = assert_raises(ExclusiveConnectionTimeoutError) do
               new_thread { @pool.public_send(group_action_method) }.join
             end
+            assert_equal @pool, error.connection_pool
           end
         end
       ensure
@@ -799,6 +855,19 @@ module ActiveRecord
         super
         ActiveSupport::IsolatedExecutionState.isolation_level = :thread
         @connection_test_model_class = ThreadConnectionTestModel
+      end
+
+      def test_lock_thread_allow_fiber_reentrency
+        @pool.lock_thread = true
+        connection = @pool.checkout
+        connection.transaction do
+          enumerator = Enumerator.new do |yielder|
+            connection.transaction do
+              yielder.yield 1
+            end
+          end
+          assert_equal 1, enumerator.next
+        end
       end
 
       private

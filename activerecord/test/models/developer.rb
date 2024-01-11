@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ostruct"
+require "models/computer"
 
 class Developer < ActiveRecord::Base
   module TimestampAliases
@@ -37,6 +38,7 @@ class Developer < ActiveRecord::Base
   accepts_nested_attributes_for :projects
 
   has_and_belongs_to_many :shared_computers, class_name: "Computer"
+  has_many :computers, foreign_key: :developer
 
   has_and_belongs_to_many :projects_extended_by_name,
       -> { extending(ProjectsAssociationExtension) },
@@ -130,6 +132,8 @@ end
 class AuditLog < ActiveRecord::Base
   belongs_to :developer, validate: true
   belongs_to :unvalidated_developer, class_name: "Developer"
+
+  self.attributes_for_inspect = [:id, :message]
 end
 
 class AuditLogRequired < ActiveRecord::Base
@@ -162,9 +166,22 @@ class DeveloperWithDefaultMentorScopeAllQueries < ActiveRecord::Base
   default_scope -> { where(mentor_id: 1) }, all_queries: true
 end
 
-class DeveloperWithDefaultNilableMentorScopeAllQueries < ActiveRecord::Base
+class DeveloperWithDefaultNilableFirmScopeAllQueries < ActiveRecord::Base
   self.table_name = "developers"
-  firm_id = nil # Could be something like Current.mentor_id
+  firm_id = nil # Could be something like Current.firm_id
+  default_scope -> { where(firm_id: firm_id) if firm_id }, all_queries: true
+end
+
+module MentorDefaultScopeNotAllQueries
+  extend ActiveSupport::Concern
+
+  included { default_scope { where(mentor_id: 1) } }
+end
+
+class DeveloperWithIncludedMentorDefaultScopeNotAllQueriesAndDefaultScopeFirmWithAllQueries < ActiveRecord::Base
+  include MentorDefaultScopeNotAllQueries
+  self.table_name = "developers"
+  firm_id = 10 # Could be something like Current.firm_id
   default_scope -> { where(firm_id: firm_id) if firm_id }, all_queries: true
 end
 

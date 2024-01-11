@@ -11,11 +11,15 @@ class FilterAttributesTest < ActiveRecord::TestCase
   fixtures :"admin/users", :"admin/accounts"
 
   setup do
+    @previous_attributes_for_inspect = ActiveRecord::Base.attributes_for_inspect
+    ActiveRecord::Base.attributes_for_inspect = :all
     @previous_filter_attributes = ActiveRecord::Base.filter_attributes
     ActiveRecord::Base.filter_attributes = [:name]
+    ActiveRecord.use_yaml_unsafe_load = true
   end
 
   teardown do
+    ActiveRecord::Base.attributes_for_inspect = @previous_attributes_for_inspect
     ActiveRecord::Base.filter_attributes = @previous_filter_attributes
   end
 
@@ -90,7 +94,7 @@ class FilterAttributesTest < ActiveRecord::TestCase
         assert_equal 0, account.inspect.scan("[FILTERED]").length
       end
     ensure
-      Admin::Account.remove_instance_variable(:@filter_attributes)
+      Admin::Account.instance_variable_set(:@filter_attributes, nil)
     end
   end
 
@@ -109,7 +113,7 @@ class FilterAttributesTest < ActiveRecord::TestCase
     assert_includes user.inspect, "auth_token: [FILTERED]"
     assert_includes user.inspect, 'token: "[FILTERED]"'
   ensure
-    User.remove_instance_variable(:@filter_attributes)
+    User.instance_variable_set(:@filter_attributes, nil)
   end
 
   test "filter_attributes on pretty_print" do
@@ -140,6 +144,6 @@ class FilterAttributesTest < ActiveRecord::TestCase
     assert_includes actual, 'auth_token: "[FILTERED]"'
     assert_includes actual, 'token: "[FILTERED]"'
   ensure
-    User.remove_instance_variable(:@filter_attributes)
+    User.instance_variable_set(:@filter_attributes, nil)
   end
 end

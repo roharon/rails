@@ -1,7 +1,6 @@
 source "https://rubygems.org"
-git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
-ruby <%= "\"#{RUBY_VERSION}\"" -%>
+ruby <%= "\"#{gem_ruby_version}\"" -%>
 
 <% gemfile_entries.each do |gemfile_entry| %>
 <%= gemfile_entry %>
@@ -16,16 +15,11 @@ ruby <%= "\"#{RUBY_VERSION}\"" -%>
 <% end -%>
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
-gem "tzinfo-data", platforms: %i[ mingw mswin x64_mingw jruby ]
+gem "tzinfo-data", platforms: %i[ <%= bundler_windows_platforms %> jruby ]
 <% if depend_on_bootsnap? -%>
 
 # Reduces boot times through caching; required in config/boot.rb
 gem "bootsnap", require: false
-<% end -%>
-<% unless skip_sprockets? || options.minimal? -%>
-
-# Use Sass to process CSS
-# gem "sassc-rails"
 <% end -%>
 <% unless skip_active_storage? -%>
 
@@ -34,14 +28,24 @@ gem "bootsnap", require: false
 <% end -%>
 <%- if options.api? -%>
 
-# Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin AJAX possible
+# Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
 <%- end -%>
 <% if RUBY_ENGINE == "ruby" -%>
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
-  gem "debug", platforms: %i[ mri mingw x64_mingw ]
+  gem "debug", platforms: %i[ mri <%= bundler_windows_platforms %> ]
+<%- unless options.skip_brakeman? -%>
+
+  # Static analysis for security vulnerabilities [https://brakemanscanner.org/]
+  gem "brakeman", require: false
+<%- end -%>
+<%- unless options.skip_rubocop? -%>
+
+  # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
+  gem "rubocop-rails-omakase", require: false
+<%- end -%>
 end
 <% end -%>
 
@@ -56,6 +60,11 @@ group :development do
 <%- end -%>
   # Speed up commands on slow machines / big apps [https://github.com/rails/spring]
   # gem "spring"
+<%- if RUBY_VERSION < "3.2" -%>
+
+  # Highlight the fine-grained location where an error occurred [https://github.com/ruby/error_highlight]
+  gem "error_highlight", ">= 0.4.0", platforms: [:ruby]
+<%- end -%>
 end
 
 <%- if depends_on_system_test? -%>
@@ -63,6 +72,5 @@ group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem "capybara"
   gem "selenium-webdriver"
-  gem "webdrivers"
 end
 <%- end -%>

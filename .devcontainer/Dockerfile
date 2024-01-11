@@ -1,28 +1,24 @@
 # See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.191.1/containers/ruby/.devcontainer/base.Dockerfile
 
 # [Choice] Ruby version: 3, 3.0, 2, 2.7, 2.6
-ARG VARIANT="3.0"
-FROM mcr.microsoft.com/vscode/devcontainers/ruby:0-${VARIANT}
+ARG VARIANT="3"
+FROM mcr.microsoft.com/devcontainers/ruby:${VARIANT}
 
 # [Choice] Node.js version: none, lts/*, 16, 14, 12, 10
-ARG NODE_VERSION="none"
+ARG NODE_VERSION="lts/*"
 RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
-
-COPY .devcontainer/library-scripts/github-debian.sh /tmp/library-scripts/
-RUN apt-get update && bash /tmp/library-scripts/github-debian.sh
 
 # [Optional] Uncomment this section to install additional OS packages.
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
-        mariadb-server libmariadb-dev \
-        postgresql postgresql-client postgresql-contrib libpq-dev \
-        redis-server memcached \
+        mariadb-client libmariadb-dev \
+        postgresql-client postgresql-contrib libpq-dev \
         ffmpeg mupdf mupdf-tools libvips poppler-utils
 
 
 ARG IMAGEMAGICK_VERSION="7.1.0-5"
-RUN wget -qO /tmp/im.tar.xz https://imagemagick.org/download/releases/ImageMagick-$IMAGEMAGICK_VERSION.tar.xz \
-    && wget -qO /tmp/im.sig https://imagemagick.org/download/releases/ImageMagick-$IMAGEMAGICK_VERSION.tar.xz.asc \
+RUN wget -qO /tmp/im.tar.xz https://imagemagick.org/archive/releases/ImageMagick-$IMAGEMAGICK_VERSION.tar.xz \
+    && wget -qO /tmp/im.sig https://imagemagick.org/archive/releases/ImageMagick-$IMAGEMAGICK_VERSION.tar.xz.asc \
     && gpg --batch --keyserver keyserver.ubuntu.com --recv 89AB63D48277377A \
     && gpg --batch --verify /tmp/im.sig /tmp/im.tar.xz \
     && tar xJf /tmp/im.tar.xz -C /tmp \
@@ -52,3 +48,4 @@ RUN cd /tmp/rails \
     && bundle install \
     && yarn install \
     && rm -rf /tmp/rails
+RUN chown -R vscode:vscode /usr/local/rvm

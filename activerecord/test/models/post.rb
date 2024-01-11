@@ -61,6 +61,7 @@ class Post < ActiveRecord::Base
 
   scope :with_comments, -> { preload(:comments) }
   scope :with_tags, -> { preload(:taggings) }
+  scope :with_tags_cte, -> { with(posts_with_tags: where("tags_count > 0")).from("posts_with_tags AS posts") }
 
   scope :tagged_with, ->(id) { joins(:taggings).where(taggings: { tag_id: id }) }
   scope :tagged_with_comment, ->(comment) { joins(:taggings).where(taggings: { comment: comment }) }
@@ -233,6 +234,7 @@ class FirstPost < ActiveRecord::Base
 
   has_many :comments, foreign_key: :post_id
   has_one  :comment,  foreign_key: :post_id
+  has_one  :comment_with_inverse, class_name: "Comment", inverse_of: :post_with_inverse
 end
 
 class PostWithDefaultSelect < ActiveRecord::Base
@@ -377,6 +379,9 @@ class FakeKlass
 
     def base_class?
       true
+    end
+
+    def deterministic_encrypted_attributes
     end
   end
 

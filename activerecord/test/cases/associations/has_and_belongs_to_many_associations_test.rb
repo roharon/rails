@@ -166,19 +166,6 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     assert_equal 1, country.treaties.count
   end
 
-  def test_join_table_composite_primary_key_should_not_warn
-    country = Country.new(name: "India")
-    country.country_id = "c1"
-    country.save!
-
-    treaty = Treaty.new(name: "peace")
-    treaty.treaty_id = "t1"
-    warning = capture(:stderr) do
-      country.treaties << treaty
-    end
-    assert_no_match(/WARNING: Active Record does not support composite primary key\./, warning)
-  end
-
   def test_has_and_belongs_to_many
     david = Developer.find(1)
 
@@ -313,7 +300,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   def test_build
     devel = Developer.find(1)
 
-    proj = assert_queries(0) { devel.projects.build("name" => "Projekt") }
+    proj = assert_queries_count(0) { devel.projects.build("name" => "Projekt") }
     assert_not_predicate devel.projects, :loaded?
 
     assert_equal devel.projects.last, proj
@@ -329,7 +316,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   def test_new_aliased_to_build
     devel = Developer.find(1)
 
-    proj = assert_queries(0) { devel.projects.new("name" => "Projekt") }
+    proj = assert_queries_count(0) { devel.projects.new("name" => "Projekt") }
     assert_not_predicate devel.projects, :loaded?
 
     assert_equal devel.projects.last, proj
@@ -550,7 +537,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
 
     developer = project.developers.first
 
-    assert_queries(0) do
+    assert_queries_count(0) do
       assert_predicate project.developers, :loaded?
       assert_includes project.developers, developer
     end
@@ -562,7 +549,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
 
     project.reload
     assert_not_predicate project.developers, :loaded?
-    assert_queries(1) do
+    assert_queries_count(1) do
       assert_includes project.developers, developer
     end
     assert_not_predicate project.developers, :loaded?
@@ -752,7 +739,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   def test_get_ids_for_loaded_associations
     developer = developers(:david)
     developer.projects.reload
-    assert_queries(0) do
+    assert_queries_count(0) do
       developer.project_ids
       developer.project_ids
     end
@@ -841,25 +828,25 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     # clear cache possibly created by other tests
     david.projects.reset_column_information
 
-    assert_queries(:any) { david.projects.columns }
+    assert_queries_count(include_schema: true) { david.projects.columns }
     assert_no_queries { david.projects.columns }
 
     ## and again to verify that reset_column_information clears the cache correctly
     david.projects.reset_column_information
 
-    assert_queries(:any) { david.projects.columns }
+    assert_queries_count(include_schema: true) { david.projects.columns }
     assert_no_queries { david.projects.columns }
   end
 
   def test_attributes_are_being_set_when_initialized_from_habtm_association_with_where_clause
     new_developer = projects(:action_controller).developers.where(name: "Marcelo").build
-    assert_equal new_developer.name, "Marcelo"
+    assert_equal "Marcelo", new_developer.name
   end
 
   def test_attributes_are_being_set_when_initialized_from_habtm_association_with_multiple_where_clauses
     new_developer = projects(:action_controller).developers.where(name: "Marcelo").where(salary: 90_000).build
-    assert_equal new_developer.name, "Marcelo"
-    assert_equal new_developer.salary, 90_000
+    assert_equal "Marcelo", new_developer.name
+    assert_equal 90_000, new_developer.salary
   end
 
   def test_include_method_in_has_and_belongs_to_many_association_should_return_true_for_instance_added_with_build
@@ -880,7 +867,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
 
   def test_has_and_belongs_to_many_associations_on_new_records_use_null_relations
     projects = Developer.new.projects
-    assert_queries(0) do
+    assert_queries_count(0) do
       assert_equal [], projects
       assert_equal [], projects.where(title: "omg")
       assert_equal [], projects.pluck(:title)
@@ -992,7 +979,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
         projects.
         detect { |p| p.id == first_project.id }
 
-    assert preloaded_first_project.salaried_developers.loaded?, true
+    assert_predicate preloaded_first_project.salaried_developers, :loaded?
     assert_equal first_project.salaried_developers.size, preloaded_first_project.salaried_developers.size
   end
 

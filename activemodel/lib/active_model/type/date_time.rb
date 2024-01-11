@@ -2,6 +2,8 @@
 
 module ActiveModel
   module Type
+    # = Active Model \DateTime \Type
+    #
     # Attribute type to represent dates and times. It is registered under the
     # +:datetime+ key.
     #
@@ -39,10 +41,10 @@ module ActiveModel
     #   end
     class DateTime < Value
       include Helpers::Timezone
-      include Helpers::TimeValue
       include Helpers::AcceptsMultiparameterTime.new(
         defaults: { 4 => 0, 5 => 0 }
       )
+      include Helpers::TimeValue
 
       def type
         :datetime
@@ -63,7 +65,12 @@ module ActiveModel
         end
 
         def fallback_string_to_time(string)
-          time_hash = ::Date._parse(string)
+          time_hash = begin
+            ::Date._parse(string)
+          rescue ArgumentError
+          end
+          return unless time_hash
+
           time_hash[:sec_fraction] = microseconds(time_hash)
 
           new_time(*time_hash.values_at(:year, :mon, :mday, :hour, :min, :sec, :sec_fraction, :offset))

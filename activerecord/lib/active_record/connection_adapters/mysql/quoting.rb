@@ -6,29 +6,35 @@ module ActiveRecord
   module ConnectionAdapters
     module MySQL
       module Quoting # :nodoc:
-        def quote_bound_value(value)
+        QUOTED_COLUMN_NAMES = Concurrent::Map.new # :nodoc:
+        QUOTED_TABLE_NAMES = Concurrent::Map.new # :nodoc:
+
+        def cast_bound_value(value)
           case value
           when Rational
-            quote(value.to_f.to_s)
-          when Numeric, ActiveSupport::Duration
-            quote(value.to_s)
+            value.to_f.to_s
+          when Numeric
+            value.to_s
           when BigDecimal
-            quote(value.to_s("F"))
+            value.to_s("F")
           when true
-            "'1'"
+            "1"
           when false
-            "'0'"
+            "0"
+          when ActiveSupport::Duration
+            warn_quote_duration_deprecated
+            value.to_s
           else
-            quote(value)
+            value
           end
         end
 
         def quote_column_name(name)
-          self.class.quoted_column_names[name] ||= "`#{super.gsub('`', '``')}`"
+          QUOTED_COLUMN_NAMES[name] ||= "`#{super.gsub('`', '``')}`"
         end
 
         def quote_table_name(name)
-          self.class.quoted_table_names[name] ||= super.gsub(".", "`.`").freeze
+          QUOTED_TABLE_NAMES[name] ||= super.gsub(".", "`.`").freeze
         end
 
         def unquoted_true
@@ -51,8 +57,16 @@ module ActiveRecord
           "x'#{value.hex}'"
         end
 
+        def unquote_identifier(identifier)
+          if identifier && identifier.start_with?("`")
+            identifier[1..-2]
+          else
+            identifier
+          end
+        end
+
         # Override +type_cast+ we pass to mysql2 Date and Time objects instead
-        # of Strings since mysql2 is able to handle those classes more efficiently.
+        # of Strings since MySQL adapters are able to handle those classes more efficiently.
         def type_cast(value) # :nodoc:
           case value
           when ActiveSupport::TimeWithZone
@@ -84,7 +98,7 @@ module ActiveRecord
           (
             (?:
               # `table_name`.`column_name` | function(one or no argument)
-              ((?:\w+\.|`\w+`\.)?(?:\w+|`\w+`)) | \w+\((?:|\g<2>)\)
+              ((?:\w+\.|`\w+`\.)?(?:\w+|`\w+`) | \w+\((?:|\g<2>)\))
             )
             (?:(?:\s+AS)?\s+(?:\w+|`\w+`))?
           )
@@ -97,7 +111,7 @@ module ActiveRecord
           (
             (?:
               # `table_name`.`column_name` | function(one or no argument)
-              ((?:\w+\.|`\w+`\.)?(?:\w+|`\w+`)) | \w+\((?:|\g<2>)\)
+              ((?:\w+\.|`\w+`\.)?(?:\w+|`\w+`) | \w+\((?:|\g<2>)\))
             )
             (?:\s+COLLATE\s+(?:\w+|"\w+"))?
             (?:\s+ASC|\s+DESC)?

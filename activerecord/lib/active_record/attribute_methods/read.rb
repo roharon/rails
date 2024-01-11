@@ -2,6 +2,7 @@
 
 module ActiveRecord
   module AttributeMethods
+    # = Active Record Attribute Methods \Read
     module Read
       extend ActiveSupport::Concern
 
@@ -21,15 +22,27 @@ module ActiveRecord
           end
       end
 
-      # Returns the value of the attribute identified by <tt>attr_name</tt> after
-      # it has been typecast (for example, "2004-12-12" in a date column is cast
-      # to a date object, like Date.new(2004, 12, 12)).
+      # Returns the value of the attribute identified by +attr_name+ after it
+      # has been type cast. For example, a date attribute will cast "2004-12-12"
+      # to <tt>Date.new(2004, 12, 12)</tt>. (For information about specific type
+      # casting behavior, see the types under ActiveModel::Type.)
       def read_attribute(attr_name, &block)
         name = attr_name.to_s
         name = self.class.attribute_aliases[name] || name
 
-        name = @primary_key if name == "id" && @primary_key
-        @attributes.fetch_value(name, &block)
+        return @attributes.fetch_value(name, &block) unless name == "id" && @primary_key
+
+        if self.class.composite_primary_key?
+          @attributes.fetch_value("id", &block)
+        else
+          if @primary_key != "id"
+            ActiveRecord.deprecator.warn(<<-MSG.squish)
+              Using read_attribute(:id) to read the primary key value is deprecated.
+              Use #id instead.
+            MSG
+          end
+          @attributes.fetch_value(@primary_key, &block)
+        end
       end
 
       # This method exists to avoid the expensive primary_key check internally, without

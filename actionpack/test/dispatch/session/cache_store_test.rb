@@ -59,7 +59,7 @@ class CacheStoreTest < ActionDispatch::IntegrationTest
       get "/set_session_value"
       assert_response :success
       assert cookies["_session_id"]
-      session_cookie = cookies.send(:hash_for)["_session_id"]
+      session_cookie = cookies.get_cookie("_session_id")
 
       get "/call_reset_session"
       assert_response :success
@@ -204,18 +204,20 @@ class CacheStoreTest < ActionDispatch::IntegrationTest
   end
 
   private
+    def app
+      @app ||= self.class.build_app do |middleware|
+        @cache = ActiveSupport::Cache::MemoryStore.new
+        middleware.use ActionDispatch::Session::CacheStore, key: "_session_id", cache: @cache
+        middleware.delete ActionDispatch::ShowExceptions
+      end
+    end
+
     def with_test_route_set
       with_routing do |set|
         set.draw do
-          ActiveSupport::Deprecation.silence do
+          ActionDispatch.deprecator.silence do
             get ":action", to: ::CacheStoreTest::TestController
           end
-        end
-
-        @app = self.class.build_app(set) do |middleware|
-          @cache = ActiveSupport::Cache::MemoryStore.new
-          middleware.use ActionDispatch::Session::CacheStore, key: "_session_id", cache: @cache
-          middleware.delete ActionDispatch::ShowExceptions
         end
 
         yield

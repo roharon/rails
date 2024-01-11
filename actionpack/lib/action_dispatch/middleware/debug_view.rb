@@ -7,16 +7,21 @@ require "action_view/base"
 
 module ActionDispatch
   class DebugView < ActionView::Base # :nodoc:
-    RESCUES_TEMPLATE_PATH = File.expand_path("templates", __dir__)
+    RESCUES_TEMPLATE_PATHS = [File.expand_path("templates", __dir__)]
 
     def initialize(assigns)
-      paths = [RESCUES_TEMPLATE_PATH]
+      paths = RESCUES_TEMPLATE_PATHS.dup
       lookup_context = ActionView::LookupContext.new(paths)
       super(lookup_context, assigns, nil)
+      @exception_wrapper = assigns[:exception_wrapper]
     end
 
     def compiled_method_container
       self.class
+    end
+
+    def error_highlight_available?
+      @exception_wrapper.error_highlight_available?
     end
 
     def debug_params(params)

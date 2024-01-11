@@ -3,6 +3,8 @@
 require "cases/helper"
 require "models/post"
 require "models/comment"
+require "models/project"
+require "models/developer"
 
 module ActiveRecord
   module DelegationTests
@@ -13,7 +15,8 @@ module ActiveRecord
       :map, :none?, :one?, :partition, :reject, :reverse, :rotate,
       :sample, :second, :sort, :sort_by, :slice, :third, :index, :rindex,
       :to_ary, :to_set, :to_xml, :to_yaml, :join,
-      :in_groups, :in_groups_of, :to_sentence, :to_formatted_s, :to_fs, :as_json
+      :in_groups, :in_groups_of, :to_sentence, :to_formatted_s, :to_fs, :as_json,
+      :intersect?
     ]
 
     ARRAY_DELEGATES.each do |method|
@@ -40,6 +43,14 @@ module ActiveRecord
 
     def target
       Comment.all
+    end
+  end
+
+  class DelegationRecordsTest < ActiveRecord::TestCase
+    include DelegationTests
+
+    def target
+      Comment.all.records
     end
   end
 
@@ -70,6 +81,22 @@ module ActiveRecord
         assert_respond_to klass.all, method
         assert_respond_to klass, method
       end
+    end
+  end
+
+  class DelegationCachingTest < ActiveRecord::TestCase
+    fixtures :projects, :developers
+
+    test "delegation doesn't override methods defined in other relation subclasses" do
+      # precondition, some methods are available on ActiveRecord::Relation subclasses
+      # but not ActiveRecord::Relation itself. Here `delete` is just an example.
+      assert_equal false, ActiveRecord::Relation.method_defined?(:delete)
+      assert_equal true, ActiveRecord::Associations::CollectionProxy.method_defined?(:delete)
+
+      project = projects(:active_record)
+      original_owner = project.developers_with_callbacks.method(:delete).owner
+      Developer.all.delete(12345)
+      assert_equal original_owner, project.developers_with_callbacks.method(:delete).owner
     end
   end
 end

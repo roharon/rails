@@ -2,6 +2,8 @@
 
 module ActionCable
   module Server
+    # = Action Cable \Server \Connections
+    #
     # Collection class for all the connections that have been established on this specific server. Remember, usually you'll run many Action Cable servers, so
     # you can't use this collection as a full list of all of the connections established against your application. Instead, use RemoteConnections for that.
     module Connections # :nodoc:
@@ -24,7 +26,7 @@ module ActionCable
       # disconnect.
       def setup_heartbeat_timer
         @heartbeat_timer ||= event_loop.timer(BEAT_INTERVAL) do
-          event_loop.post { connections.map(&:beat) }
+          event_loop.post { connections.each(&:beat) }
         end
       end
 

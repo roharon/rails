@@ -23,7 +23,7 @@ class PostgresqlAdapterTest < ActionCable::TestCase
     ActiveRecord::Base.establish_connection database_config
 
     begin
-      ActiveRecord::Base.connection
+      ActiveRecord::Base.connection.connect!
     rescue
       @rx_adapter = @tx_adapter = nil
       skip "Couldn't connect to PostgreSQL: #{database_config.inspect}"
@@ -35,7 +35,7 @@ class PostgresqlAdapterTest < ActionCable::TestCase
   def teardown
     super
 
-    ActiveRecord::Base.clear_all_connections!
+    ActiveRecord::Base.connection_handler.clear_all_connections!
   end
 
   def cable_config
@@ -60,9 +60,9 @@ class PostgresqlAdapterTest < ActionCable::TestCase
       assert_equal "hello world", queue.pop
     end
 
-    ActiveRecord::Base.clear_reloadable_connections!
+    ActiveRecord::Base.connection_handler.clear_reloadable_connections!
 
-    assert adapter.active?
+    assert_predicate adapter, :active?
   end
 
   def test_default_subscription_connection_identifier

@@ -170,12 +170,21 @@ class UnsafeRawSqlTest < ActiveRecord::TestCase
     collation_name = {
       "PostgreSQL" => "C",
       "Mysql2" => "utf8mb4_bin",
+      "Trilogy" => "utf8mb4_bin",
       "SQLite" => "binary"
     }[ActiveRecord::Base.connection.adapter_name]
 
     ids_expected = Post.order(Arel.sql(%Q'author_id, title COLLATE "#{collation_name}" DESC')).pluck(:id)
 
     ids = Post.order(["author_id", %Q'title COLLATE "#{collation_name}" DESC']).pluck(:id)
+
+    assert_equal ids_expected, ids
+  end
+
+  test "order: allows nested functions" do
+    ids_expected = Post.order(Arel.sql("author_id, length(trim(title))")).pluck(:id)
+
+    ids = Post.order("author_id, length(trim(title))").pluck(:id)
 
     assert_equal ids_expected, ids
   end
@@ -251,6 +260,14 @@ class UnsafeRawSqlTest < ActiveRecord::TestCase
     titles = Post.pluck(quoted_title)
 
     assert_equal titles_expected, titles
+  end
+
+  test "pluck: allows nested functions" do
+    title_lengths_expected = Post.pluck(Arel.sql("length(trim(title))"))
+
+    title_lengths = Post.pluck("length(trim(title))")
+
+    assert_equal title_lengths_expected, title_lengths
   end
 
   test "pluck: disallows invalid column name" do

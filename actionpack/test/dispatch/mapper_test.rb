@@ -127,7 +127,6 @@ module ActionDispatch
         fakeset = FakeSet.new
         mapper = Mapper.new fakeset
 
-        # FIXME: is this a desired behavior?
         mapper.get "/one/two/", to: "posts#index", as: :main
         assert_equal "/one/two(.:format)", fakeset.asts.first.to_s
       end
@@ -170,6 +169,15 @@ module ActionDispatch
         mapper = Mapper.new fakeset
         mapper.get "/*path", to: "pages#show", format: true
         assert_equal "/*path.:format", fakeset.asts.first.to_s
+      end
+
+      def test_can_pass_anchor_to_mount
+        fakeset = FakeSet.new
+        mapper = Mapper.new fakeset
+        app = lambda { |env| [200, {}, [""]] }
+        mapper.mount app => "/path", anchor: true
+        assert_equal "/path", fakeset.asts.first.to_s
+        assert fakeset.routes.first.path.anchored
       end
 
       def test_raising_error_when_path_is_not_passed

@@ -16,6 +16,32 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     ActiveStorage::Blob.all.each(&:delete)
   end
 
+  test "creating a record with a File as attachable attribute" do
+    @user = User.create!(name: "Dorian", avatar: file_fixture("image.gif").open)
+
+    assert_equal "image.gif", @user.avatar.filename.to_s
+    assert_not_nil @user.avatar_attachment
+    assert_not_nil @user.avatar_blob
+  end
+
+  test "uploads the file when passing a File as attachable attribute" do
+    @user = User.create!(name: "Dorian", avatar: file_fixture("image.gif").open)
+    assert_nothing_raised { @user.avatar.download }
+  end
+
+  test "creating a record with a Pathname as attachable attribute" do
+    @user = User.create!(name: "Dorian", avatar: file_fixture("image.gif"))
+
+    assert_equal "image.gif", @user.avatar.filename.to_s
+    assert_not_nil @user.avatar_attachment
+    assert_not_nil @user.avatar_blob
+  end
+
+  test "uploads the file when passing a Pathname as attachable attribute" do
+    @user = User.create!(name: "Dorian", avatar: file_fixture("image.gif"))
+    assert_nothing_raised { @user.avatar.download }
+  end
+
   test "attaching an existing blob to an existing record" do
     @user.avatar.attach create_blob(filename: "funky.jpg")
     assert_equal "funky.jpg", @user.avatar.filename.to_s
@@ -31,8 +57,8 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
 
   test "attaching an existing blob from a signed ID passes record" do
     blob = create_blob(filename: "funky.jpg")
-    arguments = [blob.signed_id, record: @user]
-    assert_called_with(ActiveStorage::Blob, :find_signed!, arguments, returns: blob) do
+
+    assert_called_with(ActiveStorage::Blob, :find_signed!, [blob.signed_id], returns: blob, record: @user) do
       @user.avatar.attach blob.signed_id
     end
   end
@@ -45,8 +71,8 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "attaching a new blob from a Hash to an existing record passes record" do
     hash = { io: StringIO.new("STUFF"), filename: "town.jpg", content_type: "image/jpeg" }
     blob = ActiveStorage::Blob.build_after_unfurling(**hash)
-    arguments = [hash.merge(record: @user, service_name: nil)]
-    assert_called_with(ActiveStorage::Blob, :build_after_unfurling, arguments, returns: blob) do
+    arguments = hash.merge(record: @user, service_name: nil)
+    assert_called_with(ActiveStorage::Blob, :build_after_unfurling, [], **arguments, returns: blob) do
       @user.avatar.attach hash
     end
   end
@@ -56,6 +82,15 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     assert_equal "racecar.jpg", @user.avatar.filename.to_s
   end
 
+  test "attaching StringIO attachable to an existing record" do
+    upload = Rack::Test::UploadedFile.new StringIO.new(""), original_filename: "test.txt"
+
+    @user.avatar.attach upload
+
+    assert_not_nil @user.avatar_attachment
+    assert_not_nil @user.avatar_blob
+  end
+
   test "attaching a new blob from an uploaded file to an existing record passes record" do
     upload = fixture_file_upload("racecar.jpg")
     def upload.open
@@ -63,19 +98,44 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     end
     arguments = { io: upload.open, filename: upload.original_filename, content_type: upload.content_type, record: @user, service_name: nil }
     blob = ActiveStorage::Blob.build_after_unfurling(**arguments)
-    assert_called_with(ActiveStorage::Blob, :build_after_unfurling, [arguments], returns: blob) do
+    assert_called_with(ActiveStorage::Blob, :build_after_unfurling, [], returns: blob, **arguments) do
       @user.avatar.attach upload
     end
   end
 
+  test "attaching a blob to a persisted, unchanged, and valid record, returns the attachment" do
+    return_value = @user.avatar.attach create_blob(filename: "funky.jpg")
+    assert_equal @user.avatar, return_value
+  end
+
+  test "attaching a blob to a persisted, unchanged, and invalid record, returns nil" do
+    @user.update_attribute(:name, nil)
+    assert_not @user.valid?
+
+    return_value = @user.avatar.attach create_blob(filename: "funky.jpg")
+    assert_nil return_value
+  end
+
+  test "attaching a blob to a changed record, returns the attachment" do
+    @user.name = "Tina"
+    return_value = @user.avatar.attach create_blob(filename: "funky.jpg")
+    assert_equal @user.avatar, return_value
+  end
+
+  test "attaching a blob to a non persisted record, returns the attachment" do
+    user = User.new(name: "John")
+    return_value = user.avatar.attach create_blob(filename: "funky.jpg")
+    assert_equal user.avatar, return_value
+  end
+
   test "attaching an existing blob to an existing, changed record" do
     @user.name = "Tina"
-    assert @user.changed?
+    assert_predicate @user, :changed?
 
     @user.avatar.attach create_blob(filename: "funky.jpg")
     assert_equal "funky.jpg", @user.avatar.filename.to_s
     assert_not @user.avatar.persisted?
-    assert @user.will_save_change_to_name?
+    assert_predicate @user, :will_save_change_to_name?
 
     @user.save!
     assert_equal "funky.jpg", @user.reload.avatar.filename.to_s
@@ -83,12 +143,12 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
 
   test "attaching an existing blob from a signed ID to an existing, changed record" do
     @user.name = "Tina"
-    assert @user.changed?
+    assert_predicate @user, :changed?
 
     @user.avatar.attach create_blob(filename: "funky.jpg").signed_id
     assert_equal "funky.jpg", @user.avatar.filename.to_s
     assert_not @user.avatar.persisted?
-    assert @user.will_save_change_to_name?
+    assert_predicate @user, :will_save_change_to_name?
 
     @user.save!
     assert_equal "funky.jpg", @user.reload.avatar.filename.to_s
@@ -96,12 +156,12 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
 
   test "attaching a new blob from a Hash to an existing, changed record" do
     @user.name = "Tina"
-    assert @user.changed?
+    assert_predicate @user, :changed?
 
     @user.avatar.attach io: StringIO.new("STUFF"), filename: "town.jpg", content_type: "image/jpeg"
     assert_equal "town.jpg", @user.avatar.filename.to_s
     assert_not @user.avatar.persisted?
-    assert @user.will_save_change_to_name?
+    assert_predicate @user, :will_save_change_to_name?
 
     @user.save!
     assert_equal "town.jpg", @user.reload.avatar.filename.to_s
@@ -109,12 +169,12 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
 
   test "attaching a new blob from an uploaded file to an existing, changed record" do
     @user.name = "Tina"
-    assert @user.changed?
+    assert_predicate @user, :changed?
 
     @user.avatar.attach fixture_file_upload("racecar.jpg")
     assert_equal "racecar.jpg", @user.avatar.filename.to_s
     assert_not @user.avatar.persisted?
-    assert @user.will_save_change_to_name?
+    assert_predicate @user, :will_save_change_to_name?
 
     @user.save!
     assert_equal "racecar.jpg", @user.reload.avatar.filename.to_s
@@ -255,7 +315,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     end
   end
 
-  test "updating an existing record to remove a dependent attachment" do
+  test "updating an existing record to nil to remove a dependent attachment" do
     create_blob(filename: "funky.jpg").tap do |blob|
       @user.avatar.attach blob
 
@@ -267,7 +327,19 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     end
   end
 
-  test "updating an existing record to remove an independent attachment" do
+  test "updating an existing record to an empty string to remove a dependent attachment" do
+    create_blob(filename: "funky.jpg").tap do |blob|
+      @user.avatar.attach blob
+
+      assert_enqueued_with job: ActiveStorage::PurgeJob, args: [ blob ] do
+        @user.update! avatar: ""
+      end
+
+      assert_not @user.avatar.attached?
+    end
+  end
+
+  test "updating an existing record to nil to remove an independent attachment" do
     create_blob(filename: "funky.jpg").tap do |blob|
       @user.cover_photo.attach blob
 
@@ -279,12 +351,24 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     end
   end
 
+  test "updating an existing record to an empty string to remove an independent attachment" do
+    create_blob(filename: "funky.jpg").tap do |blob|
+      @user.cover_photo.attach blob
+
+      assert_no_enqueued_jobs only: ActiveStorage::PurgeJob do
+        @user.update! cover_photo: ""
+      end
+
+      assert_not @user.cover_photo.attached?
+    end
+  end
+
   test "analyzing a new blob from an uploaded file after attaching it to an existing record" do
     perform_enqueued_jobs do
       @user.avatar.attach fixture_file_upload("racecar.jpg")
     end
 
-    assert @user.avatar.reload.analyzed?
+    assert_predicate @user.avatar.reload, :analyzed?
     assert_equal 4104, @user.avatar.metadata[:width]
     assert_equal 2736, @user.avatar.metadata[:height]
   end
@@ -294,7 +378,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
       @user.update! avatar: fixture_file_upload("racecar.jpg")
     end
 
-    assert @user.avatar.reload.analyzed?
+    assert_predicate @user.avatar.reload, :analyzed?
     assert_equal 4104, @user.avatar.metadata[:width]
     assert_equal 2736, @user.avatar.metadata[:height]
   end
@@ -304,7 +388,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
       @user.avatar.attach directly_upload_file_blob(filename: "racecar.jpg")
     end
 
-    assert @user.avatar.reload.analyzed?
+    assert_predicate @user.avatar.reload, :analyzed?
     assert_equal 4104, @user.avatar.metadata[:width]
     assert_equal 2736, @user.avatar.metadata[:height]
   end
@@ -314,7 +398,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
       @user.update! avatar: directly_upload_file_blob(filename: "racecar.jpg")
     end
 
-    assert @user.avatar.reload.analyzed?
+    assert_predicate @user.avatar.reload, :analyzed?
     assert_equal 4104, @user.avatar.metadata[:width]
     assert_equal 2736, @user.avatar.metadata[:height]
   end
@@ -323,7 +407,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     group = Group.create!(users_attributes: [{ name: "John", avatar: { io: StringIO.new("STUFF"), filename: "town.jpg", content_type: "image/jpeg" } }])
     group.save!
     new_user = User.find_by(name: "John")
-    assert new_user.avatar.attached?
+    assert_predicate new_user.avatar, :attached?
   end
 
   test "updating an attachment as part of an autosave association" do
@@ -331,13 +415,13 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     @user.avatar = fixture_file_upload("racecar.jpg")
     group.save!
     @user.reload
-    assert @user.avatar.attached?
+    assert_predicate @user.avatar, :attached?
   end
 
   test "attaching an existing blob to a new record" do
     User.new(name: "Jason").tap do |user|
       user.avatar.attach create_blob(filename: "funky.jpg")
-      assert user.new_record?
+      assert_predicate user, :new_record?
       assert_equal "funky.jpg", user.avatar.filename.to_s
 
       user.save!
@@ -348,7 +432,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "attaching an existing blob from a signed ID to a new record" do
     User.new(name: "Jason").tap do |user|
       user.avatar.attach create_blob(filename: "funky.jpg").signed_id
-      assert user.new_record?
+      assert_predicate user, :new_record?
       assert_equal "funky.jpg", user.avatar.filename.to_s
 
       user.save!
@@ -359,15 +443,15 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "attaching a new blob from a Hash to a new record" do
     User.new(name: "Jason").tap do |user|
       user.avatar.attach io: StringIO.new("STUFF"), filename: "town.jpg", content_type: "image/jpeg"
-      assert user.new_record?
-      assert user.avatar.attachment.new_record?
-      assert user.avatar.blob.new_record?
+      assert_predicate user, :new_record?
+      assert_predicate user.avatar.attachment, :new_record?
+      assert_predicate user.avatar.blob, :new_record?
       assert_equal "town.jpg", user.avatar.filename.to_s
       assert_not ActiveStorage::Blob.service.exist?(user.avatar.key)
 
       user.save!
-      assert user.avatar.attachment.persisted?
-      assert user.avatar.blob.persisted?
+      assert_predicate user.avatar.attachment, :persisted?
+      assert_predicate user.avatar.blob, :persisted?
       assert_equal "town.jpg", user.reload.avatar.filename.to_s
       assert ActiveStorage::Blob.service.exist?(user.avatar.key)
     end
@@ -376,15 +460,15 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "attaching a new blob from an uploaded file to a new record" do
     User.new(name: "Jason").tap do |user|
       user.avatar.attach fixture_file_upload("racecar.jpg")
-      assert user.new_record?
-      assert user.avatar.attachment.new_record?
-      assert user.avatar.blob.new_record?
+      assert_predicate user, :new_record?
+      assert_predicate user.avatar.attachment, :new_record?
+      assert_predicate user.avatar.blob, :new_record?
       assert_equal "racecar.jpg", user.avatar.filename.to_s
       assert_not ActiveStorage::Blob.service.exist?(user.avatar.key)
 
       user.save!
-      assert user.avatar.attachment.persisted?
-      assert user.avatar.blob.persisted?
+      assert_predicate user.avatar.attachment, :persisted?
+      assert_predicate user.avatar.blob, :persisted?
       assert_equal "racecar.jpg", user.reload.avatar.filename.to_s
       assert ActiveStorage::Blob.service.exist?(user.avatar.key)
     end
@@ -402,9 +486,9 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
 
   test "creating a record with a new blob from an uploaded file attached" do
     User.new(name: "Jason", avatar: fixture_file_upload("racecar.jpg")).tap do |user|
-      assert user.new_record?
-      assert user.avatar.attachment.new_record?
-      assert user.avatar.blob.new_record?
+      assert_predicate user, :new_record?
+      assert_predicate user.avatar.attachment, :new_record?
+      assert_predicate user.avatar.blob, :new_record?
       assert_equal "racecar.jpg", user.avatar.filename.to_s
       assert_not ActiveStorage::Blob.service.exist?(user.avatar.key)
 
@@ -421,7 +505,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "analyzing a new blob from an uploaded file after attaching it to a new record" do
     perform_enqueued_jobs do
       user = User.create!(name: "Jason", avatar: fixture_file_upload("racecar.jpg"))
-      assert user.avatar.reload.analyzed?
+      assert_predicate user.avatar.reload, :analyzed?
       assert_equal 4104, user.avatar.metadata[:width]
       assert_equal 2736, user.avatar.metadata[:height]
     end
@@ -430,7 +514,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "analyzing a directly-uploaded blob after attaching it to a new record" do
     perform_enqueued_jobs do
       user = User.create!(name: "Jason", avatar: directly_upload_file_blob(filename: "racecar.jpg"))
-      assert user.avatar.reload.analyzed?
+      assert_predicate user.avatar.reload, :analyzed?
       assert_equal 4104, user.avatar.metadata[:width]
       assert_equal 2736, user.avatar.metadata[:height]
     end
@@ -439,7 +523,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "detaching" do
     create_blob(filename: "funky.jpg").tap do |blob|
       @user.avatar.attach blob
-      assert @user.avatar.attached?
+      assert_predicate @user.avatar, :attached?
 
       perform_enqueued_jobs do
         @user.avatar.detach
@@ -455,7 +539,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     create_blob(filename: "funky.jpg").tap do |blob|
       user = User.new
       user.avatar.attach blob
-      assert user.avatar.attached?
+      assert_predicate user.avatar, :attached?
 
       perform_enqueued_jobs do
         user.avatar.detach
@@ -470,7 +554,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "purging" do
     create_blob(filename: "funky.jpg").tap do |blob|
       @user.avatar.attach blob
-      assert @user.avatar.attached?
+      assert_predicate @user.avatar, :attached?
 
       assert_changes -> { @user.updated_at } do
         @user.avatar.purge
@@ -484,11 +568,11 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "purging an attachment with a shared blob" do
     create_blob(filename: "funky.jpg").tap do |blob|
       @user.avatar.attach blob
-      assert @user.avatar.attached?
+      assert_predicate @user.avatar, :attached?
 
       another_user = User.create!(name: "John")
       another_user.avatar.attach blob
-      assert another_user.avatar.attached?
+      assert_predicate another_user.avatar, :attached?
 
       @user.avatar.purge
       assert_not @user.avatar.attached?
@@ -501,13 +585,13 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     create_blob(filename: "funky.jpg").tap do |blob|
       user = User.new
       user.avatar.attach blob
-      assert user.avatar.attached?
+      assert_predicate user.avatar, :attached?
 
       attachment = user.avatar.attachment
       user.avatar.purge
 
       assert_not user.avatar.attached?
-      assert attachment.destroyed?
+      assert_predicate attachment, :destroyed?
       assert_not ActiveStorage::Blob.exists?(blob.id)
       assert_not ActiveStorage::Blob.service.exist?(blob.key)
     end
@@ -525,7 +609,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "purging later" do
     create_blob(filename: "funky.jpg").tap do |blob|
       @user.avatar.attach blob
-      assert @user.avatar.attached?
+      assert_predicate @user.avatar, :attached?
 
       perform_enqueued_jobs do
         assert_changes -> { @user.updated_at } do
@@ -542,11 +626,11 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
   test "purging an attachment later with shared blob" do
     create_blob(filename: "funky.jpg").tap do |blob|
       @user.avatar.attach blob
-      assert @user.avatar.attached?
+      assert_predicate @user.avatar, :attached?
 
       another_user = User.create!(name: "John")
       another_user.avatar.attach blob
-      assert another_user.avatar.attached?
+      assert_predicate another_user.avatar, :attached?
 
       perform_enqueued_jobs do
         @user.avatar.purge_later
@@ -562,7 +646,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     create_blob(filename: "funky.jpg").tap do |blob|
       user = User.new
       user.avatar.attach blob
-      assert user.avatar.attached?
+      assert_predicate user.avatar, :attached?
 
       attachment = user.avatar.attachment
       perform_enqueued_jobs do
@@ -570,7 +654,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
       end
 
       assert_not user.avatar.attached?
-      assert attachment.destroyed?
+      assert_predicate attachment, :destroyed?
       assert_not ActiveStorage::Blob.exists?(blob.id)
       assert_not ActiveStorage::Blob.service.exist?(blob.key)
     end
@@ -615,7 +699,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
 
   test "clearing change on reload" do
     @user.avatar = create_blob(filename: "funky.jpg")
-    assert @user.avatar.attached?
+    assert_predicate @user.avatar, :attached?
 
     @user.reload
     assert_not @user.avatar.attached?
@@ -659,6 +743,35 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     end
   end
 
+  test "attaching a new blob from an uploaded file with a service defined at runtime" do
+    extra_attached = Class.new(User) do
+      def self.name; superclass.name; end
+
+      has_one_attached :signature, service: ->(user) { "disk_#{user.mirror_region}" }
+
+      def mirror_region
+        :mirror_2
+      end
+    end
+
+    @user = @user.becomes(extra_attached)
+
+    @user.signature.attach fixture_file_upload("cropped.pdf")
+    assert_equal :disk_mirror_2, @user.signature.service.name
+  end
+
+  test "raises error when global service configuration is missing" do
+    Rails.configuration.active_storage.stub(:service, nil) do
+      error = assert_raises RuntimeError do
+        User.class_eval do
+          has_one_attached :featured_photo
+        end
+      end
+
+      assert_match(/Missing Active Storage service name. Specify Active Storage service name for config.active_storage.service in config\/environments\/test.rb/, error.message)
+    end
+  end
+
   test "raises error when misconfigured service is passed" do
     error = assert_raises ArgumentError do
       User.class_eval do
@@ -667,6 +780,20 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     end
 
     assert_match(/Cannot configure service :unknown for User#featured_photo/, error.message)
+  end
+
+  test "raises error when misconfigured service is defined at runtime" do
+    extra_attached = Class.new(User) do
+      def self.name; superclass.name; end
+
+      has_one_attached :featured_vlog, service: ->(*) { :unknown }
+    end
+
+    @user = @user.becomes(extra_attached)
+
+    assert_raises match: /Cannot configure service :unknown for .+#featured_vlog/ do
+      @user.featured_vlog.attach fixture_file_upload("video.mp4")
+    end
   end
 
   test "creating variation by variation name" do
@@ -679,7 +806,7 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     assert_equal 67, image.height
   end
 
-  test "raises error when unknown variant name is used" do
+  test "raises error when unknown variant name is used to generate variant" do
     @user.avatar_with_variants.attach fixture_file_upload("racecar.jpg")
 
     error = assert_raises ArgumentError do
@@ -687,5 +814,89 @@ class ActiveStorage::OneAttachedTest < ActiveSupport::TestCase
     end
 
     assert_match(/Cannot find variant :unknown for User#avatar_with_variants/, error.message)
+  end
+
+  test "creating preview by variation name" do
+    assert_no_enqueued_jobs only: ActiveStorage::TransformJob do
+      @user.avatar_with_variants.attach fixture_file_upload("report.pdf")
+    end
+    preview = @user.avatar_with_variants.preview(:thumb).processed
+
+    image = read_image(preview.send(:variant))
+    assert_equal "PNG", image.type
+    assert_equal 77, image.width
+    assert_equal 100, image.height
+  end
+
+  test "raises error when unknown variant name is used to generate preview" do
+    @user.avatar_with_variants.attach fixture_file_upload("report.pdf")
+
+    error = assert_raises ArgumentError do
+      @user.avatar_with_variants.preview(:unknown).processed
+    end
+
+    assert_match(/Cannot find variant :unknown for User#avatar_with_variants/, error.message)
+  end
+
+  test "creating representation by variation name" do
+    @user.avatar_with_variants.attach fixture_file_upload("racecar.jpg")
+    variant = @user.avatar_with_variants.representation(:thumb).processed
+
+    image = read_image(variant)
+    assert_equal "JPEG", image.type
+    assert_equal 100, image.width
+    assert_equal 67, image.height
+  end
+
+  test "raises error when unknown variant name is used to generate representation" do
+    @user.avatar_with_variants.attach fixture_file_upload("racecar.jpg")
+
+    error = assert_raises ArgumentError do
+      @user.avatar_with_variants.representation(:unknown).processed
+    end
+
+    assert_match(/Cannot find variant :unknown for User#avatar_with_variants/, error.message)
+  end
+
+  test "transforms variants later" do
+    blob = create_file_blob(filename: "racecar.jpg")
+
+    assert_enqueued_with job: ActiveStorage::TransformJob, args: [blob, resize_to_limit: [1, 1]] do
+      @user.avatar_with_preprocessed.attach blob
+    end
+  end
+
+  test "transforms variants later conditionally via proc" do
+    assert_no_enqueued_jobs only: ActiveStorage::TransformJob do
+      @user.avatar_with_conditional_preprocessed.attach create_file_blob(filename: "racecar.jpg")
+    end
+
+    blob = create_file_blob(filename: "racecar.jpg")
+    @user.update(name: "transform via proc")
+
+    assert_enqueued_with job: ActiveStorage::TransformJob, args: [blob, resize_to_limit: [2, 2]] do
+      @user.avatar_with_conditional_preprocessed.attach blob
+    end
+  end
+
+  test "transforms variants later conditionally via method" do
+    assert_no_enqueued_jobs only: ActiveStorage::TransformJob do
+      @user.avatar_with_conditional_preprocessed.attach create_file_blob(filename: "racecar.jpg")
+    end
+
+    blob = create_file_blob(filename: "racecar.jpg")
+    @user.update(name: "transform via method")
+
+    assert_enqueued_with job: ActiveStorage::TransformJob, args: [blob, resize_to_limit: [3, 3]] do
+      @user.avatar_with_conditional_preprocessed.attach blob
+    end
+  end
+
+  test "avoids enqueuing transform later job when blob is not representable" do
+    unrepresentable_blob = create_blob(filename: "hello.txt")
+
+    assert_no_enqueued_jobs only: ActiveStorage::TransformJob do
+      @user.avatar_with_preprocessed.attach unrepresentable_blob
+    end
   end
 end

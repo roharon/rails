@@ -59,7 +59,38 @@ class ActiveStorage::PreviewTest < ActiveSupport::TestCase
       blob.preview(resize_to_limit: [640, 280]).processed
     end
 
-    assert blob.reload.preview_image.attached?
+    assert_predicate blob.reload.preview_image, :attached?
+  end
+
+  test "#processed also processes the preview's image variant" do
+    blob = create_file_blob(filename: "report.pdf", content_type: "application/pdf")
+    transformations = { resize_to_limit: [640, 280] }
+    preview = blob.preview(transformations)
+
+    assert_changes -> { !!preview.image.variant(transformations)&.send(:processed?) }, to: true do
+      preview.processed
+    end
+  end
+
+  test "image-related methods raise UnprocessedError when preview is not processed" do
+    blob = create_file_blob(filename: "report.pdf", content_type: "application/pdf")
+    preview = blob.preview(resize_to_limit: [640, 280])
+
+    assert_raises(ActiveStorage::Preview::UnprocessedError) { preview.url }
+    assert_raises(ActiveStorage::Preview::UnprocessedError) { preview.key }
+    assert_raises(ActiveStorage::Preview::UnprocessedError) { preview.download }
+  end
+
+  test "previewing with empty transformations does not generate a variant" do
+    blob = create_file_blob(filename: "report.pdf", content_type: "application/pdf")
+    preview = blob.preview({})
+
+    preview.processed
+
+    freeze_time { assert_equal blob.preview_image.url, preview.url }
+    assert_equal blob.preview_image.key, preview.key
+    assert_equal blob.preview_image.download, preview.download
+    assert_empty preview.image.variant_records
   end
 
   test "preview of PDF is created on the same service" do

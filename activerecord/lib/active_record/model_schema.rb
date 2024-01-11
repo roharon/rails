@@ -7,6 +7,13 @@ module ActiveRecord
     extend ActiveSupport::Concern
 
     ##
+    # :method: id_value
+    # :call-seq: id_value
+    #
+    # Returns the underlying column value for a column named "id". Useful when defining
+    # a composite primary key including an "id" column so that the value is readable.
+
+    ##
     # :singleton-method: primary_key_prefix_type
     # :call-seq: primary_key_prefix_type
     #
@@ -126,6 +133,27 @@ module ActiveRecord
     # +:immutable_string+. This setting does not affect the behavior of
     # <tt>attribute :foo, :string</tt>. Defaults to false.
 
+    ##
+    # :singleton-method: inheritance_column
+    # :call-seq: inheritance_column
+    #
+    # The name of the table column which stores the class name on single-table
+    # inheritance situations.
+    #
+    # The default inheritance column name is +type+, which means it's a
+    # reserved word inside Active Record. To be able to use single-table
+    # inheritance with another column name, or to use the column +type+ in
+    # your own model for something else, you can set +inheritance_column+:
+    #
+    #     self.inheritance_column = 'zoink'
+
+    ##
+    # :singleton-method: inheritance_column=
+    # :call-seq: inheritance_column=(column)
+    #
+    # Defines the name of the table column which will store the class name on single-table
+    # inheritance situations.
+
     included do
       class_attribute :primary_key_prefix_type, instance_writer: false
       class_attribute :table_name_prefix, instance_writer: false, default: ""
@@ -136,15 +164,6 @@ module ActiveRecord
       class_attribute :implicit_order_column, instance_accessor: false
       class_attribute :immutable_strings_by_default, instance_accessor: false
 
-      # Defines the name of the table column which will store the class name on single-table
-      # inheritance situations.
-      #
-      # The default inheritance column name is +type+, which means it's a
-      # reserved word inside Active Record. To be able to use single-table
-      # inheritance with another column name, or to use the column +type+ in
-      # your own model for something else, you can set +inheritance_column+:
-      #
-      #     self.inheritance_column = 'zoink'
       class_attribute :inheritance_column, instance_accessor: false, default: "type"
       singleton_class.class_eval do
         alias_method :_inheritance_column=, :inheritance_column=
@@ -168,8 +187,9 @@ module ActiveRecord
     #   artists, records => artists_records
     #   records, artists => artists_records
     #   music_artists, music_records => music_artists_records
+    #   music.artists, music.records => music.artists_records
     def self.derive_join_table_name(first_table, second_table) # :nodoc:
-      [first_table.to_s, second_table.to_s].sort.join("\0").gsub(/^(.*_)(.+)\0\1(.+)/, '\1\2_\3').tr("\0", "_")
+      [first_table.to_s, second_table.to_s].sort.join("\0").gsub(/^(.*[_.])(.+)\0\1(.+)/, '\1\2_\3').tr("\0", "_")
     end
 
     module ClassMethods
@@ -253,7 +273,7 @@ module ActiveRecord
         @table_name        = value
         @quoted_table_name = nil
         @arel_table        = nil
-        @sequence_name     = nil unless defined?(@explicit_sequence_name) && @explicit_sequence_name
+        @sequence_name     = nil unless @explicit_sequence_name
         @predicate_builder = nil
       end
 
@@ -264,8 +284,10 @@ module ActiveRecord
 
       # Computes the table name, (re)sets it internally, and returns it.
       def reset_table_name # :nodoc:
-        self.table_name = if abstract_class?
-          superclass == Base ? nil : superclass.table_name
+        self.table_name = if self == Base
+          nil
+        elsif abstract_class?
+          superclass.table_name
         elsif superclass.abstract_class?
           superclass.table_name || compute_table_name
         else
@@ -303,11 +325,7 @@ module ActiveRecord
       # The list of columns names the model should ignore. Ignored columns won't have attribute
       # accessors defined, and won't be referenced in SQL queries.
       def ignored_columns
-        if defined?(@ignored_columns)
-          @ignored_columns
-        else
-          superclass.ignored_columns
-        end
+        @ignored_columns || superclass.ignored_columns
       end
 
       # Sets the columns names the model should ignore. Ignored columns won't have attribute
@@ -328,7 +346,7 @@ module ActiveRecord
       #     #   name       :string, limit: 255
       #     #   category   :string, limit: 255
       #
-      #     self.ignored_columns = [:category]
+      #     self.ignored_columns += [:category]
       #   end
       #
       # The schema still contains "category", but now the model omits it, so any meta-driven code or
@@ -396,56 +414,34 @@ module ActiveRecord
       end
 
       def attributes_builder # :nodoc:
-        unless defined?(@attributes_builder) && @attributes_builder
+        @attributes_builder ||= begin
           defaults = _default_attributes.except(*(column_names - [primary_key]))
-          @attributes_builder = ActiveModel::AttributeSet::Builder.new(attribute_types, defaults)
+          ActiveModel::AttributeSet::Builder.new(attribute_types, defaults)
         end
-        @attributes_builder
       end
 
       def columns_hash # :nodoc:
-        load_schema
+        load_schema unless @columns_hash
         @columns_hash
       end
 
       def columns
-        load_schema
+        load_schema unless @columns
         @columns ||= columns_hash.values.freeze
       end
 
-      def attribute_types # :nodoc:
-        load_schema
-        @attribute_types ||= Hash.new(Type.default_value)
+      def _returning_columns_for_insert # :nodoc:
+        @_returning_columns_for_insert ||= columns.filter_map do |c|
+          c.name if connection.return_value_after_insert?(c)
+        end
       end
 
       def yaml_encoder # :nodoc:
         @yaml_encoder ||= ActiveModel::AttributeSet::YAMLEncoder.new(attribute_types)
       end
 
-      # Returns the type of the attribute with the given name, after applying
-      # all modifiers. This method is the only valid source of information for
-      # anything related to the types of a model's attributes. This method will
-      # access the database and load the model's schema if it is required.
-      #
-      # The return value of this method will implement the interface described
-      # by ActiveModel::Type::Value (though the object itself may not subclass
-      # it).
-      #
-      # +attr_name+ The name of the attribute to retrieve the type for. Must be
-      # a string or a symbol.
-      def type_for_attribute(attr_name, &block)
-        attr_name = attr_name.to_s
-        attr_name = attribute_aliases[attr_name] || attr_name
-
-        if block
-          attribute_types.fetch(attr_name, &block)
-        else
-          attribute_types[attr_name]
-        end
-      end
-
       # Returns the column object for the named attribute.
-      # Returns an +ActiveRecord::ConnectionAdapters::NullColumn+ if the
+      # Returns an ActiveRecord::ConnectionAdapters::NullColumn if the
       # named attribute does not exist.
       #
       #   class Person < ActiveRecord::Base
@@ -469,11 +465,6 @@ module ActiveRecord
       def column_defaults
         load_schema
         @column_defaults ||= _default_attributes.deep_dup.to_hash.freeze
-      end
-
-      def _default_attributes # :nodoc:
-        load_schema
-        @default_attributes ||= ActiveModel::AttributeSet.new({})
       end
 
       # Returns an array of column names as strings.
@@ -503,7 +494,7 @@ module ActiveRecord
       # when just after creating a table you want to populate it with some default
       # values, e.g.:
       #
-      #  class CreateJobLevels < ActiveRecord::Migration[7.1]
+      #  class CreateJobLevels < ActiveRecord::Migration[7.2]
       #    def up
       #      create_table :job_levels do |t|
       #        t.integer :id
@@ -531,33 +522,57 @@ module ActiveRecord
         initialize_find_by_cache
       end
 
+      def load_schema # :nodoc:
+        return if schema_loaded?
+        @load_schema_monitor.synchronize do
+          return if schema_loaded?
+
+          load_schema!
+
+          @schema_loaded = true
+        rescue
+          reload_schema_from_cache # If the schema loading failed half way through, we must reset the state.
+          raise
+        end
+      end
+
       protected
         def initialize_load_schema_monitor
           @load_schema_monitor = Monitor.new
+        end
+
+        def reload_schema_from_cache(recursive = true)
+          @_returning_columns_for_insert = nil
+          @arel_table = nil
+          @column_names = nil
+          @symbol_column_to_string_name_hash = nil
+          @content_columns = nil
+          @column_defaults = nil
+          @attributes_builder = nil
+          @columns = nil
+          @columns_hash = nil
+          @schema_loaded = false
+          @attribute_names = nil
+          @yaml_encoder = nil
+          if recursive
+            subclasses.each do |descendant|
+              descendant.send(:reload_schema_from_cache)
+            end
+          end
         end
 
       private
         def inherited(child_class)
           super
           child_class.initialize_load_schema_monitor
+          child_class.reload_schema_from_cache(false)
+          child_class.class_eval do
+            @ignored_columns = nil
+          end
         end
 
         def schema_loaded?
-          defined?(@schema_loaded) && @schema_loaded
-        end
-
-        def load_schema
-          return if schema_loaded?
-          @load_schema_monitor.synchronize do
-            return if defined?(@columns_hash) && @columns_hash
-
-            load_schema!
-
-            @schema_loaded = true
-          rescue
-            reload_schema_from_cache # If the schema loading failed half way through, we must reset the state.
-            raise
-          end
+          @schema_loaded
         end
 
         def load_schema!
@@ -568,35 +583,6 @@ module ActiveRecord
           columns_hash = connection.schema_cache.columns_hash(table_name)
           columns_hash = columns_hash.except(*ignored_columns) unless ignored_columns.empty?
           @columns_hash = columns_hash.freeze
-          @columns_hash.each do |name, column|
-            type = connection.lookup_cast_type_from_column(column)
-            type = _convert_type_from_options(type)
-            define_attribute(
-              name,
-              type,
-              default: column.default,
-              user_provided_default: false
-            )
-          end
-        end
-
-        def reload_schema_from_cache
-          @arel_table = nil
-          @column_names = nil
-          @symbol_column_to_string_name_hash = nil
-          @attribute_types = nil
-          @content_columns = nil
-          @default_attributes = nil
-          @column_defaults = nil
-          @attributes_builder = nil
-          @columns = nil
-          @columns_hash = nil
-          @schema_loaded = false
-          @attribute_names = nil
-          @yaml_encoder = nil
-          subclasses.each do |descendant|
-            descendant.send(:reload_schema_from_cache)
-          end
         end
 
         # Guesses the table name, but does not decorate it with prefix and suffix information.
@@ -622,12 +608,14 @@ module ActiveRecord
           end
         end
 
-        def _convert_type_from_options(type)
+        def type_for_column(column)
+          type = connection.lookup_cast_type_from_column(column)
+
           if immutable_strings_by_default && type.respond_to?(:to_immutable_string)
-            type.to_immutable_string
-          else
-            type
+            type = type.to_immutable_string
           end
+
+          type
         end
     end
   end

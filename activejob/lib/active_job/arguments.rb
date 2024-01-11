@@ -47,8 +47,6 @@ module ActiveJob
 
     private
       # :nodoc:
-      PERMITTED_TYPES = [ NilClass, String, Integer, Float, BigDecimal, TrueClass, FalseClass ]
-      # :nodoc:
       GLOBALID_KEY = "_aj_globalid"
       # :nodoc:
       SYMBOL_KEYS_KEY = "_aj_symbol_keys"
@@ -67,35 +65,23 @@ module ActiveJob
         OBJECT_SERIALIZER_KEY, OBJECT_SERIALIZER_KEY.to_sym,
         WITH_INDIFFERENT_ACCESS_KEY, WITH_INDIFFERENT_ACCESS_KEY.to_sym,
       ]
-      private_constant :PERMITTED_TYPES, :RESERVED_KEYS, :GLOBALID_KEY,
+      private_constant :RESERVED_KEYS, :GLOBALID_KEY,
         :SYMBOL_KEYS_KEY, :RUBY2_KEYWORDS_KEY, :WITH_INDIFFERENT_ACCESS_KEY
-
-      unless Hash.respond_to?(:ruby2_keywords_hash?) && Hash.respond_to?(:ruby2_keywords_hash)
-        using Module.new {
-          refine Hash do
-            class << Hash
-              def ruby2_keywords_hash?(hash)
-                !new(*[hash]).default.equal?(hash)
-              end
-
-              def ruby2_keywords_hash(hash)
-                _ruby2_keywords_hash(**hash)
-              end
-
-              private
-                def _ruby2_keywords_hash(*args)
-                  args.last
-                end
-                ruby2_keywords(:_ruby2_keywords_hash)
-            end
-          end
-        }
-      end
 
       def serialize_argument(argument)
         case argument
-        when *PERMITTED_TYPES
+        when nil, true, false, Integer, Float # Types that can hardly be subclassed
           argument
+        when String
+          if argument.class == String
+            argument
+          else
+            begin
+              Serializers.serialize(argument)
+            rescue SerializationError
+              argument
+            end
+          end
         when GlobalID::Identification
           convert_to_global_id_hash(argument)
         when Array
@@ -112,18 +98,18 @@ module ActiveJob
           result = serialize_hash(argument)
           result[aj_hash_key] = symbol_keys
           result
-        when -> (arg) { arg.respond_to?(:permitted?) }
-          serialize_indifferent_hash(argument.to_h)
         else
-          Serializers.serialize(argument)
+          if argument.respond_to?(:permitted?) && argument.respond_to?(:to_h)
+            serialize_indifferent_hash(argument.to_h)
+          else
+            Serializers.serialize(argument)
+          end
         end
       end
 
       def deserialize_argument(argument)
         case argument
-        when String
-          argument
-        when *PERMITTED_TYPES
+        when nil, true, false, String, Integer, Float
           argument
         when Array
           argument.map { |arg| deserialize_argument(arg) }

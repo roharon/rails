@@ -3,15 +3,64 @@
 module ActiveRecord
   # = Active Record \Relation
   class Relation
+    class ExplainProxy  # :nodoc:
+      def initialize(relation, options)
+        @relation = relation
+        @options  = options
+      end
+
+      def inspect
+        exec_explain { @relation.send(:exec_queries) }
+      end
+
+      def average(column_name)
+        exec_explain { @relation.average(column_name) }
+      end
+
+      def count(column_name = nil)
+        exec_explain { @relation.count(column_name) }
+      end
+
+      def first(limit = nil)
+        exec_explain { @relation.first(limit) }
+      end
+
+      def last(limit = nil)
+        exec_explain { @relation.last(limit) }
+      end
+
+      def maximum(column_name)
+        exec_explain { @relation.maximum(column_name) }
+      end
+
+      def minimum(column_name)
+        exec_explain { @relation.minimum(column_name) }
+      end
+
+      def pluck(*column_names)
+        exec_explain { @relation.pluck(*column_names) }
+      end
+
+      def sum(identity_or_column = nil)
+        exec_explain { @relation.sum(identity_or_column) }
+      end
+
+      private
+        def exec_explain(&block)
+          @relation.exec_explain(@relation.collecting_queries_for_explain { block.call }, @options)
+        end
+    end
+
     MULTI_VALUE_METHODS  = [:includes, :eager_load, :preload, :select, :group,
                             :order, :joins, :left_outer_joins, :references,
-                            :extending, :unscope, :optimizer_hints, :annotate]
+                            :extending, :unscope, :optimizer_hints, :annotate,
+                            :with]
 
     SINGLE_VALUE_METHODS = [:limit, :offset, :lock, :readonly, :reordering, :strict_loading,
                             :reverse_order, :distinct, :create_with, :skip_query_cache]
 
     CLAUSE_METHODS = [:where, :having, :from]
-    INVALID_METHODS_FOR_DELETE_ALL = [:distinct]
+    INVALID_METHODS_FOR_DELETE_ALL = [:distinct, :with]
 
     VALUE_METHODS = MULTI_VALUE_METHODS + SINGLE_VALUE_METHODS + CLAUSE_METHODS
 
@@ -33,6 +82,8 @@ module ActiveRecord
       @delegate_to_klass = false
       @future_result = nil
       @records = nil
+      @async = false
+      @none = false
     end
 
     def initialize_copy(other)
@@ -43,7 +94,7 @@ module ActiveRecord
     def bind_attribute(name, value) # :nodoc:
       if reflection = klass._reflect_on_association(name)
         name = reflection.foreign_key
-        value = value.read_attribute(reflection.klass.primary_key) unless value.nil?
+        value = value.read_attribute(reflection.association_primary_key) unless value.nil?
       end
 
       attr = table[name]
@@ -159,21 +210,25 @@ module ActiveRecord
     # failed due to validation errors it won't be persisted, you get what
     # #create returns in such situation.
     #
-    # Please note <b>this method is not atomic</b>, it runs first a SELECT, and if
-    # there are no results an INSERT is attempted. If there are other threads
-    # or processes there is a race condition between both calls and it could
-    # be the case that you end up with two similar records.
+    # If creation failed because of a unique constraint, this method will
+    # assume it encountered a race condition and will try finding the record
+    # once more. If somehow the second find still does not find a record
+    # because a concurrent DELETE happened, it will then raise an
+    # ActiveRecord::RecordNotFound exception.
     #
-    # If this might be a problem for your application, please see #create_or_find_by.
+    # Please note <b>this method is not atomic</b>, it runs first a SELECT,
+    # and if there are no results an INSERT is attempted. So if the table
+    # doesn't have a relevant unique constraint it could be the case that
+    # you end up with two or more similar records.
     def find_or_create_by(attributes, &block)
-      find_by(attributes) || create(attributes, &block)
+      find_by(attributes) || create_or_find_by(attributes, &block)
     end
 
     # Like #find_or_create_by, but calls
     # {create!}[rdoc-ref:Persistence::ClassMethods#create!] so an exception
     # is raised if the created record is invalid.
     def find_or_create_by!(attributes, &block)
-      find_by(attributes) || create!(attributes, &block)
+      find_by(attributes) || create_or_find_by!(attributes, &block)
     end
 
     # Attempts to create a record with the given attributes in a table that has a unique database constraint
@@ -181,16 +236,15 @@ module ActiveRecord
     # unique constraints, the exception such an insertion would normally raise is caught,
     # and the existing record with those attributes is found using #find_by!.
     #
-    # This is similar to #find_or_create_by, but avoids the problem of stale reads between the SELECT
-    # and the INSERT, as that method needs to first query the table, then attempt to insert a row
-    # if none is found.
+    # This is similar to #find_or_create_by, but tries to create the record first. As such it is
+    # better suited for cases where the record is most likely not to exist yet.
     #
     # There are several drawbacks to #create_or_find_by, though:
     #
     # * The underlying table must have the relevant columns defined with unique database constraints.
     # * A unique constraint violation may be triggered by only one, or at least less than all,
     #   of the given attributes. This means that the subsequent #find_by! may fail to find a
-    #   matching record, which will then raise an <tt>ActiveRecord::RecordNotFound</tt> exception,
+    #   matching record, which will then raise an ActiveRecord::RecordNotFound exception,
     #   rather than a record with the given attributes.
     # * While we avoid the race condition between SELECT -> INSERT from #find_or_create_by,
     #   we actually have another race condition between INSERT -> SELECT, which can be triggered
@@ -199,7 +253,7 @@ module ActiveRecord
     # * It relies on exception handling to handle control flow, which may be marginally slower.
     # * The primary key may auto-increment on each create, even if it fails. This can accelerate
     #   the problem of running out of integers, if the underlying table is still stuck on a primary
-    #   key of type int (note: All Rails apps since 5.1+ have defaulted to bigint, which is not liable
+    #   key of type int (note: All \Rails apps since 5.1+ have defaulted to bigint, which is not liable
     #   to this problem).
     #
     # This method will return a record if all given attributes are covered by unique constraints
@@ -209,7 +263,11 @@ module ActiveRecord
     def create_or_find_by(attributes, &block)
       transaction(requires_new: true) { create(attributes, &block) }
     rescue ActiveRecord::RecordNotUnique
-      find_by!(attributes)
+      if connection.transaction_open?
+        where(attributes).lock.find_by!(attributes)
+      else
+        find_by!(attributes)
+      end
     end
 
     # Like #create_or_find_by, but calls
@@ -218,7 +276,11 @@ module ActiveRecord
     def create_or_find_by!(attributes, &block)
       transaction(requires_new: true) { create!(attributes, &block) }
     rescue ActiveRecord::RecordNotUnique
-      find_by!(attributes)
+      if connection.transaction_open?
+        where(attributes).lock.find_by!(attributes)
+      else
+        find_by!(attributes)
+      end
     end
 
     # Like #find_or_create_by, but calls {new}[rdoc-ref:Core#new]
@@ -231,13 +293,30 @@ module ActiveRecord
     # returns the result as a string. The string is formatted imitating the
     # ones printed by the database shell.
     #
+    #   User.all.explain
+    #   # EXPLAIN SELECT `users`.* FROM `users`
+    #   # ...
+    #
     # Note that this method actually runs the queries, since the results of some
     # are needed by the next ones when eager loading is going on.
     #
+    # To run EXPLAIN on queries created by +first+, +pluck+ and +count+, call
+    # these methods on +explain+:
+    #
+    #   User.all.explain.count
+    #   # EXPLAIN SELECT COUNT(*) FROM `users`
+    #   # ...
+    #
+    # The column name can be passed if required:
+    #
+    #   User.all.explain.maximum(:id)
+    #   # EXPLAIN SELECT MAX(`users`.`id`) FROM `users`
+    #   # ...
+    #
     # Please see further details in the
     # {Active Record Query Interface guide}[https://guides.rubyonrails.org/active_record_querying.html#running-explain].
-    def explain
-      exec_explain(collecting_queries_for_explain { exec_queries })
+    def explain(*options)
+      ExplainProxy.new(self, options)
     end
 
     # Converts relation objects to Array.
@@ -267,6 +346,8 @@ module ActiveRecord
 
     # Returns true if there are no records.
     def empty?
+      return true if @none
+
       if loaded?
         records.empty?
       else
@@ -275,26 +356,49 @@ module ActiveRecord
     end
 
     # Returns true if there are no records.
-    def none?
-      return super if block_given?
+    #
+    # When a pattern argument is given, this method checks whether elements in
+    # the Enumerable match the pattern via the case-equality operator (<tt>===</tt>).
+    #
+    #   posts.none?(Comment) # => true or false
+    def none?(*args)
+      return true if @none
+
+      return super if args.present? || block_given?
       empty?
     end
 
     # Returns true if there are any records.
-    def any?
-      return super if block_given?
+    #
+    # When a pattern argument is given, this method checks whether elements in
+    # the Enumerable match the pattern via the case-equality operator (<tt>===</tt>).
+    #
+    #    posts.any?(Post) # => true or false
+    def any?(*args)
+      return false if @none
+
+      return super if args.present? || block_given?
       !empty?
     end
 
     # Returns true if there is exactly one record.
-    def one?
-      return super if block_given?
+    #
+    # When a pattern argument is given, this method checks whether elements in
+    # the Enumerable match the pattern via the case-equality operator (<tt>===</tt>).
+    #
+    #    posts.one?(Post) # => true or false
+    def one?(*args)
+      return false if @none
+
+      return super if args.present? || block_given?
       return records.one? if loaded?
       limited_count == 1
     end
 
     # Returns true if there is more than one record.
     def many?
+      return false if @none
+
       return super if block_given?
       return records.many? if loaded?
       limited_count > 1
@@ -307,7 +411,7 @@ module ActiveRecord
     #    # => "products/query-1850ab3d302391b85b8693e941286659"
     #
     # If ActiveRecord::Base.collection_cache_versioning is turned off, as it was
-    # in Rails 6.0 and earlier, the cache key will also include a version.
+    # in \Rails 6.0 and earlier, the cache key will also include a version.
     #
     #    ActiveRecord::Base.collection_cache_versioning = false
     #    Product.where("name like ?", "%Cosmic Encounter%").cache_key
@@ -409,7 +513,7 @@ module ActiveRecord
     #   Comment.where(post_id: 1).scoping do
     #     Comment.first
     #   end
-    #   # => SELECT "comments".* FROM "comments" WHERE "comments"."post_id" = 1 ORDER BY "comments"."id" ASC LIMIT 1
+    #   # SELECT "comments".* FROM "comments" WHERE "comments"."post_id" = 1 ORDER BY "comments"."id" ASC LIMIT 1
     #
     # If <tt>all_queries: true</tt> is passed, scoping will apply to all queries
     # for the relation including +update+ and +delete+ on instances.
@@ -429,10 +533,10 @@ module ActiveRecord
       end
     end
 
-    def _exec_scope(*args, &block) # :nodoc:
+    def _exec_scope(...) # :nodoc:
       @delegate_to_klass = true
       registry = klass.scope_registry
-      _scoping(nil, registry) { instance_exec(*args, &block) || self }
+      _scoping(nil, registry) { instance_exec(...) || self }
     ensure
       @delegate_to_klass = false
     end
@@ -446,7 +550,8 @@ module ActiveRecord
     #
     # ==== Parameters
     #
-    # * +updates+ - A string, array, or hash representing the SET part of an SQL statement.
+    # * +updates+ - A string, array, or hash representing the SET part of an SQL statement. Any strings provided will
+    #   be type cast, unless you use +Arel.sql+. (Don't pass user-provided values to +Arel.sql+.)
     #
     # ==== Examples
     #
@@ -461,8 +566,13 @@ module ActiveRecord
     #
     #   # Update all invoices and set the number column to its id value.
     #   Invoice.update_all('number = id')
+    #
+    #   # Update all books with 'Rails' in their title
+    #   Book.where('title LIKE ?', '%Rails%').update_all(title: Arel.sql("title + ' - volume 1'"))
     def update_all(updates)
       raise ArgumentError, "Empty list of attributes to change" if updates.blank?
+
+      return 0 if @none
 
       if updates.is_a?(Hash)
         if klass.locking_enabled? &&
@@ -599,6 +709,8 @@ module ActiveRecord
     #   Post.distinct.delete_all
     #   # => ActiveRecord::ActiveRecordError: delete_all doesn't support distinct
     def delete_all
+      return 0 if @none
+
       invalid_methods = INVALID_METHODS_FOR_DELETE_ALL.select do |method|
         value = @values[method]
         method == :distinct ? value : value&.any?
@@ -712,6 +824,7 @@ module ActiveRecord
       @to_sql = @arel = @loaded = @should_eager_load = nil
       @offsets = @take = nil
       @cache_keys = nil
+      @cache_versions = nil
       @records = nil
       self
     end
@@ -719,7 +832,7 @@ module ActiveRecord
     # Returns sql statement for the relation.
     #
     #   User.where(name: 'Oscar').to_sql
-    #   # => SELECT "users".* FROM "users"  WHERE "users"."name" = 'Oscar'
+    #   # SELECT "users".* FROM "users"  WHERE "users"."name" = 'Oscar'
     def to_sql
       @to_sql ||= if eager_loading?
         apply_join_dependency do |relation, join_dependency|
@@ -841,10 +954,6 @@ module ActiveRecord
         @loaded = true
       end
 
-      def null_relation? # :nodoc:
-        is_a?(NullRelation)
-      end
-
     private
       def already_in_scope?(registry)
         @delegate_to_klass && registry.current_scope(klass, true)
@@ -922,13 +1031,21 @@ module ActiveRecord
           preload_associations(records) unless skip_preloading_value
 
           records.each(&:readonly!) if readonly_value
-          records.each(&:strict_loading!) if strict_loading_value
+          records.each { |record| record.strict_loading!(strict_loading_value) } unless strict_loading_value.nil?
 
           records
         end
       end
 
       def exec_main_query(async: false)
+        if @none
+          if async
+            return FutureResult::Complete.new([])
+          else
+            return []
+          end
+        end
+
         skip_query_cache_if_necessary do
           if where_clause.contradiction?
             [].freeze

@@ -17,14 +17,9 @@ module ActiveSupport
           assert_equal times, times_called, error
         end
 
-        def assert_called_with(object, method_name, args, returns: nil, &block)
+        def assert_called_with(object, method_name, args, returns: false, **kwargs, &block)
           mock = Minitest::Mock.new
-
-          if !args.empty? && args.all?(Array)
-            args.each { |argv| mock.expect(:call, returns, argv) }
-          else
-            mock.expect(:call, returns, args)
-          end
+          expect_called_with(mock, args, returns: returns, **kwargs)
 
           object.stub(method_name, mock, &block)
 
@@ -33,6 +28,10 @@ module ActiveSupport
 
         def assert_not_called(object, method_name, message = nil, &block)
           assert_called(object, method_name, message, times: 0, &block)
+        end
+
+        def expect_called_with(mock, args, returns: false, **kwargs)
+          mock.expect(:call, returns, args, **kwargs)
         end
 
         def assert_called_on_instance_of(klass, method_name, message = nil, times: 1, returns: nil)

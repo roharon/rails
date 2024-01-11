@@ -66,7 +66,7 @@ class UpdateAllTest < ActiveRecord::TestCase
       assert_equal pets.count, pets.update_all(name: "Bob")
     end
 
-    if current_adapter?(:Mysql2Adapter)
+    if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
       assert_no_match %r/SELECT DISTINCT #{Regexp.escape(Pet.connection.quote_table_name("pets.pet_id"))}/, sqls.last
     else
       assert_match %r/SELECT #{Regexp.escape(Pet.connection.quote_table_name("pets.pet_id"))}/, sqls.last
@@ -322,7 +322,7 @@ class UpdateAllTest < ActiveRecord::TestCase
         assert_not test_update_with_order_succeeds.call("id ASC")
       else
         # test that we're failing because the current Arel's engine doesn't support UPDATE ORDER BY queries is using subselects instead
-        assert_sql(/\AUPDATE .+ \(SELECT .* ORDER BY id DESC\)\z/i) do
+        assert_queries_match(/\AUPDATE .+ \(SELECT .* ORDER BY id DESC\)\z/i) do
           test_update_with_order_succeeds.call("id DESC")
         end
       end

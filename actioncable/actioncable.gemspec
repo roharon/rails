@@ -9,7 +9,7 @@ Gem::Specification.new do |s|
   s.summary     = "WebSocket framework for Rails."
   s.description = "Structure many real-time application concerns into channels over a single WebSocket connection."
 
-  s.required_ruby_version = ">= 2.7.0"
+  s.required_ruby_version = ">= 3.1.0"
 
   s.license = "MIT"
 
@@ -37,5 +37,5 @@ Gem::Specification.new do |s|
 
   s.add_dependency "nio4r",            "~> 2.0"
   s.add_dependency "websocket-driver", ">= 0.6.1"
-  s.add_dependency "zeitwerk",         "~> 2.5"
+  s.add_dependency "zeitwerk",         "~> 2.6"
 end

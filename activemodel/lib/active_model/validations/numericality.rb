@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require "active_model/validations/comparability"
+require "active_model/validations/resolve_value"
 require "bigdecimal/util"
 
 module ActiveModel
   module Validations
     class NumericalityValidator < EachValidator # :nodoc:
       include Comparability
+      include ResolveValue
 
       RANGE_CHECKS = { in: :in? }
       NUMBER_CHECKS = { odd: :odd?, even: :even? }
@@ -64,7 +66,7 @@ module ActiveModel
 
     private
       def option_as_number(record, option_value, precision, scale)
-        parse_as_number(option_value(record, option_value), precision, scale)
+        parse_as_number(resolve_value(record, option_value), precision, scale)
       end
 
       def parse_as_number(raw_value, precision, scale)
@@ -114,14 +116,7 @@ module ActiveModel
       end
 
       def allow_only_integer?(record)
-        case options[:only_integer]
-        when Symbol
-          record.send(options[:only_integer])
-        when Proc
-          options[:only_integer].call(record)
-        else
-          options[:only_integer]
-        end
+        resolve_value(record, options[:only_integer])
       end
 
       def prepare_value_for_validation(value, record, attr_name)
@@ -153,10 +148,11 @@ module ActiveModel
 
     module HelperMethods
       # Validates whether the value of the specified attribute is numeric by
-      # trying to convert it to a float with Kernel.Float (if <tt>only_integer</tt>
-      # is +false+) or applying it to the regular expression <tt>/\A[\+\-]?\d+\z/</tt>
-      # (if <tt>only_integer</tt> is set to +true+). Precision of Kernel.Float values
-      # are guaranteed up to 15 digits.
+      # trying to convert it to a float with +Kernel.Float+ (if
+      # <tt>only_integer</tt> is +false+) or applying it to the regular
+      # expression <tt>/\A[\+\-]?\d+\z/</tt> (if <tt>only_integer</tt> is set to
+      # +true+). Precision of +Kernel.Float+ values are guaranteed up to 15
+      # digits.
       #
       #   class Person < ActiveRecord::Base
       #     validates_numericality_of :value, on: :create
@@ -173,20 +169,29 @@ module ActiveModel
       #   +false+). Notice that for Integer and Float columns empty strings are
       #   converted to +nil+.
       # * <tt>:greater_than</tt> - Specifies the value must be greater than the
-      #   supplied value.
+      #   supplied value. The default error message for this option is _"must be
+      #   greater than %{count}"_.
       # * <tt>:greater_than_or_equal_to</tt> - Specifies the value must be
-      #   greater than or equal the supplied value.
+      #   greater than or equal the supplied value. The default error message
+      #   for this option is _"must be greater than or equal to %{count}"_.
       # * <tt>:equal_to</tt> - Specifies the value must be equal to the supplied
-      #   value.
+      #   value. The default error message for this option is _"must be equal to
+      #   %{count}"_.
       # * <tt>:less_than</tt> - Specifies the value must be less than the
-      #   supplied value.
+      #   supplied value. The default error message for this option is _"must be
+      #   less than %{count}"_.
       # * <tt>:less_than_or_equal_to</tt> - Specifies the value must be less
-      #   than or equal the supplied value.
+      #   than or equal the supplied value. The default error message for this
+      #   option is _"must be less than or equal to %{count}"_.
       # * <tt>:other_than</tt> - Specifies the value must be other than the
-      #   supplied value.
-      # * <tt>:odd</tt> - Specifies the value must be an odd number.
-      # * <tt>:even</tt> - Specifies the value must be an even number.
-      # * <tt>:in</tt> - Check that the value is within a range.
+      #   supplied value. The default error message for this option is _"must be
+      #   other than %{count}"_.
+      # * <tt>:odd</tt> - Specifies the value must be an odd number. The default
+      #   error message for this option is _"must be odd"_.
+      # * <tt>:even</tt> - Specifies the value must be an even number. The
+      #   default error message for this option is _"must be even"_.
+      # * <tt>:in</tt> - Check that the value is within a range. The default
+      #   error message for this option is _"must be in %{count}"_.
       #
       # There is also a list of default options supported by every validator:
       # +:if+, +:unless+, +:on+, +:allow_nil+, +:allow_blank+, and +:strict+ .

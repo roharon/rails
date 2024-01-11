@@ -66,11 +66,42 @@ class ExclusionValidationTest < ActiveModel::TestCase
     assert_predicate t, :valid?
   end
 
+  def test_validates_exclusion_of_with_lambda_without_arguments
+    Topic.validates_exclusion_of :title, in: lambda { %w( monkey elephant ) }
+
+    t = Topic.new
+    t.title = "monkey"
+    assert_predicate t, :invalid?
+
+    t.title = "wasabi"
+    assert_predicate t, :valid?
+  end
+
   def test_validates_exclusion_of_with_range
     Topic.validates_exclusion_of :content, in: ("a".."g")
 
     assert_predicate Topic.new(content: "g"), :invalid?
     assert_predicate Topic.new(content: "h"), :valid?
+  end
+
+  def test_validates_exclusion_of_beginless_numeric_range
+    range_end = 1000
+    Topic.validates_exclusion_of(:raw_price, in: ..range_end)
+    assert_predicate Topic.new(title: "aaa", price: -100), :invalid?
+    assert_predicate Topic.new(title: "aaa", price: 0), :invalid?
+    assert_predicate Topic.new(title: "aaa", price: 100), :invalid?
+    assert_predicate Topic.new(title: "aaa", price: 2000), :valid?
+    assert_predicate Topic.new(title: "aaa", price: range_end), :invalid?
+  end
+
+  def test_validates_exclusion_of_endless_numeric_range
+    range_begin = 0
+    Topic.validates_exclusion_of(:raw_price, in: range_begin..)
+    assert_predicate Topic.new(title: "aaa", price: -1), :valid?
+    assert_predicate Topic.new(title: "aaa", price: -100), :valid?
+    assert_predicate Topic.new(title: "aaa", price: 100), :invalid?
+    assert_predicate Topic.new(title: "aaa", price: 2000), :invalid?
+    assert_predicate Topic.new(title: "aaa", price: range_begin), :invalid?
   end
 
   def test_validates_exclusion_of_with_time_range

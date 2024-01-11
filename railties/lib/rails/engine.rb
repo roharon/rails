@@ -9,13 +9,14 @@ require "pathname"
 require "thread"
 
 module Rails
-  # <tt>Rails::Engine</tt> allows you to wrap a specific Rails application or subset of
+  # +Rails::Engine+ allows you to wrap a specific \Rails application or subset of
   # functionality and share it with other applications or within a larger packaged application.
   # Every Rails::Application is just an engine, which allows for simple
   # feature and application sharing.
   #
-  # Any <tt>Rails::Engine</tt> is also a Rails::Railtie, so the same
-  # methods (like <tt>rake_tasks</tt> and +generators+) and configuration
+  # Any +Rails::Engine+ is also a Rails::Railtie, so the same
+  # methods (like {rake_tasks}[rdoc-ref:Rails::Railtie::rake_tasks] and
+  # {generators}[rdoc-ref:Rails::Railtie::generators]) and configuration
   # options that are available in railties can also be used in engines.
   #
   # == Creating an Engine
@@ -116,7 +117,7 @@ module Rails
   # An engine can also be a Rack application. It can be useful if you have a Rack application that
   # you would like to provide with some of the +Engine+'s features.
   #
-  # To do that, use the +endpoint+ method:
+  # To do that, use the ::endpoint method:
   #
   #   module MyEngine
   #     class Engine < Rails::Engine
@@ -181,7 +182,7 @@ module Rails
   #   it's used as default <tt>:as</tt> option
   # * rake task for installing migrations <tt>my_engine:install:migrations</tt>
   #
-  # Engine name is set by default based on class name. For <tt>MyEngine::Engine</tt> it will be
+  # Engine name is set by default based on class name. For +MyEngine::Engine+ it will be
   # <tt>my_engine_engine</tt>. You can change it manually using the <tt>engine_name</tt> method:
   #
   #   module MyEngine
@@ -197,7 +198,7 @@ module Rails
   # named routes from the application will be available to your engine's controllers as well.
   #
   # However, sometimes you want to isolate your engine from the application, especially if your engine
-  # has its own router. To do that, you simply need to call +isolate_namespace+. This method requires
+  # has its own router. To do that, you simply need to call ::isolate_namespace. This method requires
   # you to pass a module where all your controllers, helpers, and models should be nested to:
   #
   #   module MyEngine
@@ -231,14 +232,14 @@ module Rails
   #   end
   #
   # If +MyEngine+ is isolated, the routes above will point to
-  # <tt>MyEngine::ArticlesController</tt>. You also don't need to use longer
+  # +MyEngine::ArticlesController+. You also don't need to use longer
   # URL helpers like +my_engine_articles_path+. Instead, you should simply use
   # +articles_path+, like you would do with your main application.
   #
   # To make this behavior consistent with other parts of the framework,
   # isolated engines also have an effect on ActiveModel::Naming. In a
-  # normal Rails app, when you use a namespaced model such as
-  # <tt>Namespace::Article</tt>, ActiveModel::Naming will generate
+  # normal \Rails app, when you use a namespaced model such as
+  # +Namespace::Article+, ActiveModel::Naming will generate
   # names with the prefix "namespace". In an isolated engine, the prefix will
   # be omitted in URL helpers and form fields, for convenience.
   #
@@ -252,7 +253,7 @@ module Rails
   # Additionally, an isolated engine will set its own name according to its
   # namespace, so <tt>MyEngine::Engine.engine_name</tt> will return
   # "my_engine". It will also set +MyEngine.table_name_prefix+ to "my_engine_",
-  # meaning for example that <tt>MyEngine::Article</tt> will use the
+  # meaning for example that +MyEngine::Article+ will use the
   # +my_engine_articles+ database table by default.
   #
   # == Using Engine's routes outside Engine
@@ -300,7 +301,7 @@ module Rails
   #
   # == Isolated engine's helpers
   #
-  # Sometimes you may want to isolate engine, but use helpers that are defined for it.
+  # Sometimes you may want to isolate an engine, but use helpers that are defined for it.
   # If you want to share just a few specific helpers you can add them to application's
   # helpers in ApplicationController:
   #
@@ -327,7 +328,7 @@ module Rails
   # To use engine's migrations in application you can use the rake task below, which copies them to
   # application's dir:
   #
-  #   rake ENGINE_NAME:install:migrations
+  #   $ rake ENGINE_NAME:install:migrations
   #
   # Note that some of the migrations may be skipped if a migration with the same name already exists
   # in application. In such a situation you must decide whether to leave that migration or rename the
@@ -395,6 +396,12 @@ module Rails
 
             unless mod.respond_to?(:table_name_prefix)
               define_method(:table_name_prefix) { "#{name}_" }
+
+              ActiveSupport.on_load(:active_record) do
+                mod.singleton_class.redefine_method(:table_name_prefix) do
+                  "#{ActiveRecord::Base.table_name_prefix}#{name}_"
+                end
+              end
             end
 
             unless mod.respond_to?(:use_relative_model_naming?)
@@ -450,7 +457,7 @@ module Rails
       self
     end
 
-    # Load Rails runner and invoke the registered hooks.
+    # Load \Rails runner and invoke the registered hooks.
     # Check Rails::Railtie.runner for more info.
     def load_runner(app = self)
       run_runner_blocks(app)
@@ -465,7 +472,7 @@ module Rails
       self
     end
 
-    # Load Rails generators and invoke the registered hooks.
+    # Load \Rails generators and invoke the registered hooks.
     # Check Rails::Railtie.generators for more info.
     def load_generators(app = self)
       require "rails/generators"
@@ -494,8 +501,7 @@ module Rails
     def helpers
       @helpers ||= begin
         helpers = Module.new
-        all = ActionController::Base.all_helpers_from_path(helpers_paths)
-        ActionController::Base.modules_for_helpers(all).each do |mod|
+        AbstractController::Helpers.helper_modules_from_paths(helpers_paths).each do |mod|
           helpers.include(mod)
         end
         helpers
@@ -579,7 +585,7 @@ module Rails
     end
 
     initializer :set_eager_load_paths, before: :bootstrap_hook do
-      ActiveSupport::Dependencies._eager_load_paths.merge(config.eager_load_paths)
+      ActiveSupport::Dependencies._eager_load_paths.merge(config.all_eager_load_paths)
       config.eager_load_paths.freeze
     end
 
@@ -587,6 +593,7 @@ module Rails
       routing_paths = paths["config/routes.rb"].existent
       external_paths = self.paths["config/routes"].paths
       routes.draw_paths.concat(external_paths)
+      app.routes.draw_paths.concat(external_paths)
 
       if routes? || routing_paths.any?
         app.routes_reloader.paths.unshift(*routing_paths)
@@ -606,6 +613,22 @@ module Rails
       unless views.empty?
         ActiveSupport.on_load(:action_controller) { prepend_view_path(views) if respond_to?(:prepend_view_path) }
         ActiveSupport.on_load(:action_mailer) { prepend_view_path(views) }
+      end
+    end
+
+    initializer :add_mailer_preview_paths do
+      previews = paths["test/mailers/previews"].existent
+      unless previews.empty?
+        ActiveSupport.on_load(:action_mailer) { self.preview_paths |= previews }
+      end
+    end
+
+    initializer :add_fixture_paths do
+      next if is_a?(Rails::Application)
+
+      fixtures = config.root.join("test", "fixtures")
+      if fixtures_in_root_and_not_in_vendor_or_dot_dir?(fixtures)
+        ActiveSupport.on_load(:active_record_fixtures) { self.fixture_paths |= ["#{fixtures}/"] }
       end
     end
 
@@ -689,14 +712,14 @@ module Rails
       end
 
       def _all_autoload_once_paths
-        config.autoload_once_paths.uniq
+        config.all_autoload_once_paths.uniq
       end
 
       def _all_autoload_paths
         @_all_autoload_paths ||= begin
-          autoload_paths  = config.autoload_paths
-          autoload_paths += config.eager_load_paths
-          autoload_paths -= config.autoload_once_paths
+          autoload_paths  = config.all_autoload_paths
+          autoload_paths += config.all_eager_load_paths
+          autoload_paths -= config.all_autoload_once_paths
           autoload_paths.uniq
         end
       end
@@ -710,6 +733,12 @@ module Rails
           end
           load_paths.uniq
         end
+      end
+
+      def fixtures_in_root_and_not_in_vendor_or_dot_dir?(fixtures)
+        fixtures.exist? && fixtures.to_s.start_with?(Rails.root.to_s) &&
+          !fixtures.to_s.start_with?(Rails.root.join("vendor").to_s) &&
+          !fixtures.to_s.start_with?("#{Rails.root}/.".to_s)
       end
 
       def build_request(env)

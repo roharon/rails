@@ -14,71 +14,21 @@ module ActiveSupport
     #   ActiveSupport::Logger.logger_outputs_to?(logger, STDOUT)
     #   # => true
     def self.logger_outputs_to?(logger, *sources)
-      logdev = logger.instance_variable_get(:@logdev)
-      logger_source = logdev.dev if logdev.respond_to?(:dev)
-      sources.any? { |source| source == logger_source }
-    end
-
-    # Broadcasts logs to multiple loggers.
-    def self.broadcast(logger) # :nodoc:
-      Module.new do
-        define_singleton_method(:extended) do |base|
-          base.public_send(:broadcast_to, logger) if base.respond_to?(:broadcast_to)
-        end
-
-        define_method(:add) do |*args, &block|
-          logger.add(*args, &block)
-          super(*args, &block)
-        end
-
-        define_method(:<<) do |x|
-          logger << x
-          super(x)
-        end
-
-        define_method(:close) do
-          logger.close
-          super()
-        end
-
-        define_method(:progname=) do |name|
-          logger.progname = name
-          super(name)
-        end
-
-        define_method(:level=) do |level|
-          logger.level = level
-          super(level)
-        end
-
-        define_method(:local_level=) do |level|
-          logger.local_level = level if logger.respond_to?(:local_level=)
-          super(level) if respond_to?(:local_level=)
-        end
-
-        define_method(:silence) do |level = Logger::ERROR, &block|
-          if logger.respond_to?(:silence)
-            logger.silence(level) do
-              if defined?(super)
-                super(level, &block)
-              else
-                block.call(self)
-              end
-            end
-          else
-            if defined?(super)
-              super(level, &block)
-            else
-              block.call(self)
-            end
-          end
-        end
+      loggers = if logger.is_a?(BroadcastLogger)
+        logger.broadcasts
+      else
+        [logger]
       end
+
+      logdevs = loggers.map { |logger| logger.instance_variable_get(:@logdev) }
+      logger_sources = logdevs.filter_map { |logdev| logdev.dev if logdev.respond_to?(:dev) }
+
+      sources.intersect?(logger_sources)
     end
 
     def initialize(*args, **kwargs)
       super
-      @formatter = SimpleFormatter.new
+      @formatter ||= SimpleFormatter.new
     end
 
     # Simple formatter which only displays the message.

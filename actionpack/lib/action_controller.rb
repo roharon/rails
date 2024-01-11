@@ -2,8 +2,17 @@
 
 require "abstract_controller"
 require "action_dispatch"
+require "action_controller/deprecator"
 require "action_controller/metal/strong_parameters"
+require "action_controller/metal/exceptions"
 
+# = Action Controller
+#
+# Action Controller is a module of Action Pack.
+#
+# Action Controller provides a base controller class that can be subclassed to
+# implement filters and actions to handle requests. The result of an action is
+# typically content generated from views.
 module ActionController
   extend ActiveSupport::Autoload
 
@@ -18,6 +27,7 @@ module ActionController
   end
 
   autoload_under "metal" do
+    autoload :AllowBrowser
     autoload :ConditionalGet
     autoload :ContentSecurityPolicy
     autoload :Cookies
@@ -37,6 +47,7 @@ module ActionController
     autoload :Logging
     autoload :MimeResponds
     autoload :ParamsWrapper
+    autoload :RateLimiting
     autoload :Redirecting
     autoload :Renderers
     autoload :Rendering
@@ -59,7 +70,6 @@ end
 
 # Common Active Support usage in Action Controller
 require "active_support/core_ext/module/attribute_accessors"
-require "active_support/core_ext/load_error"
 require "active_support/core_ext/module/attr_internal"
 require "active_support/core_ext/name_error"
 require "active_support/inflector"

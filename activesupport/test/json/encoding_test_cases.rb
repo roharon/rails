@@ -36,6 +36,26 @@ module JSONTest
     end
   end
 
+  class RomanNumeral < Numeric
+    def initialize(str)
+      @str = str
+    end
+
+    def as_json(options = nil)
+      @str
+    end
+  end
+
+  class CustomNumeric < Numeric
+    def initialize(str)
+      @str = str
+    end
+
+    def to_json(options = nil)
+      @str
+    end
+  end
+
   module EncodingTestCases
     TrueTests     = [[ true,  %(true)  ]]
     FalseTests    = [[ false, %(false) ]]
@@ -46,7 +66,10 @@ module JSONTest
                      [ 1.0 / 0.0,   %(null) ],
                      [ -1.0 / 0.0,  %(null) ],
                      [ BigDecimal("0.0") / BigDecimal("0.0"),  %(null) ],
-                     [ BigDecimal("2.5"), %("#{BigDecimal('2.5')}") ]]
+                     [ BigDecimal("2.5"), %("#{BigDecimal('2.5')}") ],
+                     [ RomanNumeral.new("MCCCXXXVII"), %("MCCCXXXVII") ],
+                     [ [CustomNumeric.new("123")], %([123]) ]
+    ]
 
     StringTests   = [[ "this is the <string>",     %("this is the \\u003cstring\\u003e")],
                      [ 'a "string" with quotes & an ampersand', %("a \\"string\\" with quotes \\u0026 an ampersand") ],
@@ -58,7 +81,8 @@ module JSONTest
                      [ [1, "a", :b, nil, false], %([1,\"a\",\"b\",null,false]) ]]
 
     HashTests     = [[ { foo: "bar" }, %({\"foo\":\"bar\"}) ],
-                     [ { 1 => 1, 2 => "a", 3 => :b, 4 => nil, 5 => false }, %({\"1\":1,\"2\":\"a\",\"3\":\"b\",\"4\":null,\"5\":false}) ]]
+                     [ { 1 => 1, 2 => "a", 3 => :b, 4 => nil, 5 => false }, %({\"1\":1,\"2\":\"a\",\"3\":\"b\",\"4\":null,\"5\":false}) ],
+                     [ { "a" => 1, :a => 2, :c => { "b" => 3, :b => 4 } }, %({\"a\":2,\"c\":{\"b\":4}}) ]]
 
     RangeTests    = [[ 1..2,     %("1..2")],
                      [ 1...2,    %("1...2")],
@@ -71,7 +95,7 @@ module JSONTest
     ModuleTests   = [[ Module, %("Module") ],
                      [ Class,  %("Class")  ],
                      [ ActiveSupport,                   %("ActiveSupport")                   ],
-                     [ ActiveSupport::MessageEncryptor, %("ActiveSupport::MessageEncryptor") ]]
+                     [ ActiveSupport::Testing, %("ActiveSupport::Testing") ]]
     ObjectTests   = [[ Foo.new(1, 2), %({\"a\":1,\"b\":2}) ]]
     HashlikeTests = [[ Hashlike.new, %({\"bar\":\"world\",\"foo\":\"hello\"}) ]]
     StructTests   = [[ MyStruct.new(:foo, "bar"), %({\"name\":\"foo\",\"value\":\"bar\"}) ],

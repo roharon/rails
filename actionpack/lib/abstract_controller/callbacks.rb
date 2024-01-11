@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module AbstractController
-  # = Abstract Controller Callbacks
+  # = Abstract Controller \Callbacks
   #
   # Abstract Controller provides hooks during the life cycle of a controller action.
   # Callbacks allow you to trigger logic during this cycle. Available callbacks are:
@@ -48,7 +48,17 @@ module AbstractController
           missing_action = @actions.find { |action| !controller.available_action?(action) }
           if missing_action
             filter_names = @filters.length == 1 ? @filters.first.inspect : @filters.inspect
-            message = "The #{missing_action} action could not be found for the #{filter_names} callback on #{controller.class.name}, but it is listed in its #{@conditional_key.inspect} option"
+
+            message = <<~MSG
+              The #{missing_action} action could not be found for the #{filter_names}
+              callback on #{controller.class.name}, but it is listed in the controller's
+              #{@conditional_key.inspect} option.
+
+              Raising for missing callback actions is a new default in Rails 7.1, if you'd
+              like to turn this off you can delete the option from the environment configurations
+              or set `config.action_controller.raise_on_missing_callback_actions` to `false`.
+            MSG
+
             raise ActionNotFound.new(message, controller, missing_action)
           end
         end
@@ -244,7 +254,7 @@ module AbstractController
     private
       # Override <tt>AbstractController::Base#process_action</tt> to run the
       # <tt>process_action</tt> callbacks around the normal behavior.
-      def process_action(*)
+      def process_action(...)
         run_callbacks(:process_action) do
           super
         end

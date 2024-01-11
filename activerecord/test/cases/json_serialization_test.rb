@@ -33,7 +33,7 @@ class JsonSerializationTest < ActiveRecord::TestCase
       avatar: "binarydata",
       created_at: Time.utc(2006, 8, 1),
       awesome: true,
-      preferences: { shows: "anime" }
+      preferences: { "shows" => "anime" }
     )
   end
 
@@ -149,8 +149,8 @@ class JsonSerializationTest < ActiveRecord::TestCase
     @contact = ContactSti.new(@contact.attributes)
     assert_equal "ContactSti", @contact.type
 
-    def @contact.serializable_hash(options = {})
-      super({ except: %w(age) }.merge!(options))
+    def @contact.serializable_hash(options = nil)
+      super({ except: %w(age) }.merge!(options || {}))
     end
 
     json = @contact.to_json

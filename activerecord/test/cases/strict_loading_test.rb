@@ -36,18 +36,14 @@ class StrictLoadingTest < ActiveRecord::TestCase
     end
 
     assert developer.strict_loading!(mode: :n_plus_one_only)
-    assert developer.strict_loading_n_plus_one_only?
+    assert_predicate developer, :strict_loading_n_plus_one_only?
   end
 
-  def test_strict_loading_n_plus_one_only_mode
+  def test_strict_loading_n_plus_one_only_mode_with_has_many
     developer = Developer.first
-    ship = Ship.first
-    ShipPart.create!(name: "Stern", ship: ship)
     firm = Firm.create!(name: "NASA")
-    project = Project.create!(name: "Apollo", firm: firm)
+    developer.projects << Project.create!(name: "Apollo", firm: firm)
 
-    ship.update_column(:developer_id, developer.id)
-    developer.projects << project
     developer.reload
 
     developer.strict_loading!(mode: :n_plus_one_only)
@@ -63,6 +59,18 @@ class StrictLoadingTest < ActiveRecord::TestCase
     assert_raises ActiveRecord::StrictLoadingViolationError do
       developer.projects.last.firm
     end
+  end
+
+  def test_strict_loading_n_plus_one_only_mode_with_belongs_to
+    developer = Developer.first
+    ship = Ship.first
+    ShipPart.create!(name: "Stern", ship: ship)
+
+    ship.update_column(:developer_id, developer.id)
+    developer.reload
+
+    developer.strict_loading!(mode: :n_plus_one_only)
+    assert_predicate developer, :strict_loading?
 
     # Does not raise when a belongs_to association (:ship) loads its
     # has_many association (:parts)
@@ -80,12 +88,13 @@ class StrictLoadingTest < ActiveRecord::TestCase
 
   def test_strict_loading
     Developer.all.each { |d| assert_not d.strict_loading? }
-    Developer.strict_loading.each { |d| assert d.strict_loading? }
+    Developer.strict_loading.each { |d| assert_predicate d, :strict_loading? }
   end
 
   def test_strict_loading_by_default
     with_strict_loading_by_default(Developer) do
-      Developer.all.each { |d| assert d.strict_loading? }
+      Developer.all.each { |d| assert_predicate d, :strict_loading? }
+      Developer.strict_loading(false).each { |d| assert_not d.strict_loading? }
     end
   end
 
@@ -161,6 +170,60 @@ class StrictLoadingTest < ActiveRecord::TestCase
     end
   end
 
+  def test_strict_loading_on_concat_is_ignored
+    developer = Developer.first
+    developer.strict_loading!
+
+    assert_nothing_raised do
+      developer.audit_logs << AuditLog.new(message: "message")
+    end
+  end
+
+  def test_strict_loading_on_build_is_ignored
+    developer = Developer.first
+    developer.strict_loading!
+
+    assert_nothing_raised do
+      developer.audit_logs.build(message: message)
+    end
+  end
+
+  def test_strict_loading_on_writer_is_ignored
+    developer = Developer.first
+    developer.strict_loading!
+
+    assert_nothing_raised do
+      developer.audit_logs = [AuditLog.new(message: "message")]
+    end
+  end
+
+  def test_strict_loading_with_new_record_on_concat_is_ignored
+    developer = Developer.new(id: Developer.first.id)
+    developer.strict_loading!
+
+    assert_nothing_raised do
+      developer.audit_logs << AuditLog.new(message: "message")
+    end
+  end
+
+  def test_strict_loading_with_new_record_on_build_is_ignored
+    developer = Developer.new(id: Developer.first.id)
+    developer.strict_loading!
+
+    assert_nothing_raised do
+      developer.audit_logs.build(message: "message")
+    end
+  end
+
+  def test_strict_loading_with_new_record_on_writer_is_ignored
+    developer = Developer.new(id: Developer.first.id)
+    developer.strict_loading!
+
+    assert_nothing_raised do
+      developer.audit_logs = [AuditLog.new(message: "message")]
+    end
+  end
+
   def test_strict_loading_has_one_reload
     with_strict_loading_by_default(Developer) do
       ship = Ship.create!(developer: Developer.first, name: "The Great Ship")
@@ -228,6 +291,20 @@ class StrictLoadingTest < ActiveRecord::TestCase
       end
     end
   end
+
+  def test_strict_loading_with_has_one_through_does_not_prevent_creation_of_association
+    firm = Firm.new(name: "SuperFirm").tap(&:strict_loading!)
+    computer = Computer.new(extendedWarranty: 1).tap(&:strict_loading!)
+
+    computer.firm = firm
+    computer.developer.name = "Joe"
+    firm.lead_developer = computer.developer
+
+    assert_nothing_raised do
+      computer.save!
+    end
+  end
+
 
   def test_preload_audit_logs_are_strict_loading_because_parent_is_strict_loading
     developer = Developer.first
@@ -549,8 +626,55 @@ class StrictLoadingTest < ActiveRecord::TestCase
     developer.strict_loading!
     assert_predicate developer, :strict_loading?
 
-    assert_logged("Strict loading violation: Developer is marked for strict loading. The AuditLog association named :audit_logs cannot be lazily loaded.") do
+    expected_log = <<-MSG.squish
+      `Developer` is marked for strict_loading.
+      The AuditLog association named `:audit_logs` cannot be lazily loaded.
+    MSG
+    assert_logged(expected_log) do
       developer.audit_logs.to_a
+    end
+  ensure
+    ActiveRecord.action_on_strict_loading_violation = old_value
+  end
+
+  def test_strict_loading_violation_on_polymorphic_relation
+    pirate = Pirate.create!(catchphrase: "Arrr!")
+    Treasure.create!(looter: pirate)
+
+    treasure = Treasure.last
+    treasure.strict_loading!
+    assert_predicate treasure, :strict_loading?
+
+    error = assert_raises ActiveRecord::StrictLoadingViolationError do
+      treasure.looter
+    end
+
+    expected_error_message = <<-MSG.squish
+      `Treasure` is marked for strict_loading.
+      The polymorphic association named `:looter` cannot be lazily loaded.
+    MSG
+
+    assert_equal(expected_error_message, error.message)
+  end
+
+  def test_strict_loading_violation_logs_on_polymorphic_relation
+    old_value = ActiveRecord.action_on_strict_loading_violation
+    ActiveRecord.action_on_strict_loading_violation = :log
+    assert_equal :log, ActiveRecord.action_on_strict_loading_violation
+
+    pirate = Pirate.create!(catchphrase: "Arrr!")
+    Treasure.create!(looter: pirate)
+
+    treasure = Treasure.last
+    treasure.strict_loading!
+    assert_predicate treasure, :strict_loading?
+
+    expected_log = <<-MSG.squish
+      `Treasure` is marked for strict_loading.
+      The polymorphic association named `:looter` cannot be lazily loaded.
+    MSG
+    assert_logged(expected_log) do
+      treasure.looter
     end
   ensure
     ActiveRecord.action_on_strict_loading_violation = old_value

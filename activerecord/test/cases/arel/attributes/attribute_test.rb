@@ -658,6 +658,16 @@ module Arel
           )
         end
 
+        it "can be constructed with an exclusive range implicitly ending at Infinity" do
+          attribute = Attribute.new nil, nil
+          node = attribute.between(0...)
+
+          _(node).must_equal Nodes::GreaterThanOrEqual.new(
+            attribute,
+            Nodes::Casted.new(0, attribute)
+          )
+        end
+
         it "can be constructed with a quoted range ending at Infinity" do
           attribute = Attribute.new nil, nil
           node = attribute.between(quoted_range(0, ::Float::INFINITY, false))
@@ -696,6 +706,16 @@ module Arel
               Nodes::Casted.new(3, attribute)
             )
           ])
+        end
+
+        it "can be constructed with a range where the begin and end are equal" do
+          attribute = Attribute.new nil, nil
+          node = attribute.between(1..1)
+
+          _(node).must_equal Nodes::Equality.new(
+            attribute,
+            Nodes::Casted.new(1, attribute)
+          )
         end
       end
 
@@ -1122,7 +1142,7 @@ module Arel
           table = Table.new(:foo, type_caster: fake_caster)
           condition = table["id"].eq("1").and(table["other_id"].eq("2"))
 
-          assert table.able_to_type_cast?
+          assert_predicate table, :able_to_type_cast?
           _(condition.to_sql).must_equal %("foo"."id" = 1 AND "foo"."other_id" = '2')
         end
 
@@ -1134,7 +1154,7 @@ module Arel
           table = Table.new(:foo, type_caster: fake_caster)
           condition = table["id"].eq(Arel.sql("(select 1)"))
 
-          assert table.able_to_type_cast?
+          assert_predicate table, :able_to_type_cast?
           _(condition.to_sql).must_equal %("foo"."id" = (select 1))
         end
       end

@@ -50,11 +50,11 @@ If for whatever reason you find a situation you don't know how to resolve, don't
 How to Activate `zeitwerk` Mode
 -------------------------------
 
-### Applications running Rails 5.x or Less
+### Applications Running Rails 5.x or Less
 
 In applications running a Rails version previous to 6.0, `zeitwerk` mode is not available. You need to be at least in Rails 6.0.
 
-### Applications running Rails 6.x
+### Applications Running Rails 6.x
 
 In applications running Rails 6.x there are two scenarios.
 
@@ -88,8 +88,8 @@ How to Verify The Application Runs in `zeitwerk` Mode?
 
 To verify the application is running in `zeitwerk` mode, execute
 
-```
-bin/rails runner 'p Rails.autoloaders.zeitwerk_enabled?'
+```bash
+$ bin/rails runner 'p Rails.autoloaders.zeitwerk_enabled?'
 ```
 
 If that prints `true`, `zeitwerk` mode is enabled.
@@ -119,21 +119,21 @@ config.eager_load_paths << "#{Rails.root}/extras"
 
 Once `zeitwerk` mode is enabled and the configuration of eager load paths double-checked, please run:
 
-```
-bin/rails zeitwerk:check
+```bash
+$ bin/rails zeitwerk:check
 ```
 
 A successful check looks like this:
 
-```
-% bin/rails zeitwerk:check
+```bash
+$ bin/rails zeitwerk:check
 Hold on, I am eager loading the application.
 All is good!
 ```
 
 There can be additional output depending on the application configuration, but the last "All is good!" is what you are looking for.
 
-If the double-check explained in the previous section determined actually there have to be some custom autoload paths outside the eager load paths, the task will detect and warn about them. However, if the test suite loads those files successfully, you're good.
+If the double-check explained in the previous section determined that there have to be some custom autoload paths outside the eager load paths, the task will detect and warn about them. However, if the test suite loads those files successfully, you're good.
 
 Now, if there's any file that does not define the expected constant, the task will tell you. It does so one file at a time, because if it moved on, the failure loading one file could cascade into other failures unrelated to the check we want to run and the error report would be confusing.
 
@@ -141,13 +141,13 @@ If there's one constant reported, fix that particular one and run the task again
 
 Take for example:
 
-```
-% bin/rails zeitwerk:check
+```bash
+$ bin/rails zeitwerk:check
 Hold on, I am eager loading the application.
 expected file app/models/vat.rb to define constant Vat
 ```
 
-VAT is an European tax. The file `app/models/vat.rb` defines `VAT` but the autoloader expects `Vat`, why?
+VAT is a European tax. The file `app/models/vat.rb` defines `VAT` but the autoloader expects `Vat`, why?
 
 ### Acronyms
 
@@ -155,7 +155,7 @@ This is the most common kind of discrepancy you may find, it has to do with acro
 
 The classic autoloader is able to autoload `VAT` because its input is the name of the missing constant, `VAT`, invokes `underscore` on it, which yields `vat`, and looks for a file called `vat.rb`. It works.
 
-The input of the new autoloader is the file system. Give the file `vat.rb`, Zeitwerk invokes `camelize` on `vat`, which yields `Vat`, and expects the file to define the constant `Vat`. That is what the error message says.
+The input of the new autoloader is the file system. Given the file `vat.rb`, Zeitwerk invokes `camelize` on `vat`, which yields `Vat`, and expects the file to define the constant `Vat`. That is what the error message says.
 
 Fixing this is easy, you only need to tell the inflector about this acronym:
 
@@ -177,8 +177,8 @@ With this option you have more control, because only files called exactly `vat.r
 
 With that in place, the check passes!
 
-```
-% bin/rails zeitwerk:check
+```bash
+$ bin/rails zeitwerk:check
 Hold on, I am eager loading the application.
 All is good!
 ```
@@ -198,7 +198,7 @@ By default, `app/models/concerns` belongs to the autoload paths and therefore it
 
 If your application uses `Concerns` as namespace, you have two options:
 
-1. Remove the `Concerns` namespace from those classes and modules and update client code.
+1. Remove the `Concerns` namespace from those classes and modules and update the client code.
 2. Leave things as they are by removing `app/models/concerns` from the autoload paths:
 
   ```ruby
@@ -208,7 +208,7 @@ If your application uses `Concerns` as namespace, you have two options:
     delete("#{Rails.root}/app/models/concerns")
   ```
 
-### Having `app` in the autoload paths
+### Having `app` in the Autoload Paths
 
 Some projects want something like `app/api/base.rb` to define `API::Base`, and add `app` to the autoload paths to accomplish that.
 
@@ -273,7 +273,7 @@ won't work, child objects like `Hotel::Pricing` won't be found.
 
 This restriction only applies to explicit namespaces. Classes and modules not defining a namespace can be defined using those idioms.
 
-### One file, one constant (at the same top-level)
+### One File, One Constant (at the Same Top-level)
 
 In `classic` mode you could technically define several constants at the same top-level and have them all reloaded. For example, given
 
@@ -326,7 +326,7 @@ If your application decorates classes or modules from an engine, chances are it 
 
 ```ruby
 config.to_prepare do
-  Dir.glob("#{Rails.root}/app/overrides/**/*_override.rb").each do |override|
+  Dir.glob("#{Rails.root}/app/overrides/**/*_override.rb").sort.each do |override|
     require_dependency override
   end
 end
@@ -338,7 +338,7 @@ That has to be updated: You need to tell the `main` autoloader to ignore the dir
 overrides = "#{Rails.root}/app/overrides"
 Rails.autoloaders.main.ignore(overrides)
 config.to_prepare do
-  Dir.glob("#{overrides}/**/*_override.rb").each do |override|
+  Dir.glob("#{overrides}/**/*_override.rb").sort.each do |override|
     load override
   end
 end
@@ -362,7 +362,7 @@ as
 
 ```ruby
 # config/initializers/country.rb
-unless Rails.application.config.cache_classes
+if Rails.application.config.reloading_enabled?
   Rails.autoloaders.main.on_unload("Country") do |klass, _abspath|
     klass.expire_redis_cache
   end
@@ -378,10 +378,23 @@ Spring reloads the application code if something changes. In the `test` environm
 config.cache_classes = false
 ```
 
-Otherwise you'll get this error:
+or, since Rails 7.1:
+
+```ruby
+# config/environments/test.rb
+config.enable_reloading = true
+```
+
+Otherwise, you'll get:
 
 ```
 reloading is disabled because config.cache_classes is true
+```
+
+or
+
+```
+reloading is disabled because config.enable_reloading is false
 ```
 
 This has no performance penalty.
@@ -413,7 +426,7 @@ Starting with Rails 7, newly generated applications are configured that way by d
 
 If your project does not have continuous integration, you can still eager load in the test suite by calling `Rails.application.eager_load!`:
 
-#### minitest
+#### Minitest
 
 ```ruby
 require "test_helper"
@@ -437,12 +450,12 @@ RSpec.describe "Zeitwerk compliance" do
 end
 ```
 
-Delete any `require` calls
+Delete any `require` Calls
 --------------------------
 
 In my experience, projects generally do not do this. But I've seen a couple, and have heard of a few others.
 
-In Rails application you use `require` exclusively to load code from `lib` or from 3rd party like gem dependencies or the standard library. **Never load autoloadable application code with `require`**. See why this was a bad idea already in `classic` [here](https://guides.rubyonrails.org/v6.1/autoloading_and_reloading_constants_classic_mode.html#autoloading-and-require).
+In a Rails application you use `require` exclusively to load code from `lib` or from 3rd party like gem dependencies or the standard library. **Never load autoloadable application code with `require`**. See why this was a bad idea already in `classic` [here](https://guides.rubyonrails.org/v6.1/autoloading_and_reloading_constants_classic_mode.html#autoloading-and-require).
 
 ```ruby
 require "nokogiri" # GOOD
@@ -455,13 +468,13 @@ Please delete any `require` calls of that type.
 New Features You Can Leverage
 -----------------------------
 
-### Delete `require_dependency` calls
+### Delete `require_dependency` Calls
 
 All known use cases of `require_dependency` have been eliminated with Zeitwerk. You should grep the project and delete them.
 
 If your application uses Single Table Inheritance, please see the [Single Table Inheritance section](autoloading_and_reloading_constants.html#single-table-inheritance) of the Autoloading and Reloading Constants (Zeitwerk Mode) guide.
 
-### Qualified Names in Class and Module Definitions Are Now Possible
+### Qualified Names in Class and Module Definitions are Now Possible
 
 You can now robustly use constant paths in class and module definitions:
 

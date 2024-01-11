@@ -76,6 +76,13 @@ class NumericalityValidationTest < ActiveModel::TestCase
     assert_valid_values(FLOATS + INTEGERS + BIGDECIMAL + INFINITY)
   end
 
+  def test_validates_numericality_of_with_integer_only_and_lambda_as_value
+    Topic.validates_numericality_of :approved, only_integer: -> { false }
+
+    assert_invalid_values(NIL + BLANK + JUNK)
+    assert_valid_values(FLOATS + INTEGERS + BIGDECIMAL + INFINITY)
+  end
+
   def test_validates_numericality_of_with_numeric_only
     Topic.validates_numericality_of :approved, only_numeric: true
 
@@ -247,6 +254,13 @@ class NumericalityValidationTest < ActiveModel::TestCase
     Topic.remove_method :min_approved
   end
 
+  def test_validates_numericality_with_lambda
+    Topic.validates_numericality_of :approved, greater_than_or_equal_to: -> { 5 }
+
+    assert_invalid_values([3, 4], "must be greater than or equal to 5")
+    assert_valid_values([5, 6])
+  end
+
   def test_validates_numericality_with_symbol
     Topic.define_method(:max_approved) { 5 }
     Topic.validates_numericality_of :approved, less_than_or_equal_to: :max_approved
@@ -337,15 +351,15 @@ class NumericalityValidationTest < ActiveModel::TestCase
   private
     def assert_invalid_values(values, error = nil)
       with_each_topic_approved_value(values) do |topic, value|
-        assert topic.invalid?, "#{value.inspect} not rejected as a number"
-        assert topic.errors[:approved].any?, "FAILED for #{value.inspect}"
+        assert_predicate topic, :invalid?, "#{value.inspect} not rejected as a number"
+        assert_predicate topic.errors[:approved], :any?, "FAILED for #{value.inspect}"
         assert_equal error, topic.errors[:approved].first if error
       end
     end
 
     def assert_valid_values(values)
       with_each_topic_approved_value(values) do |topic, value|
-        assert topic.valid?, "#{value.inspect} not accepted as a number with validation error: #{topic.errors[:approved].first}"
+        assert_predicate topic, :valid?, "#{value.inspect} not accepted as a number with validation error: #{topic.errors[:approved].first}"
       end
     end
 

@@ -40,15 +40,6 @@ module ApplicationTests
         end
       end
 
-      def db_create_with_warning(expected_database)
-        Dir.chdir(app_path) do
-          output = rails("db:create")
-          assert_match(/Rails couldn't infer whether you are using multiple databases/, output)
-          assert_match(/Created database/, output)
-          assert File.exist?(expected_database)
-        end
-      end
-
       test "db:create and db:drop without database URL" do
         require "#{app_path}/config/environment"
         db_config = ActiveRecord::Base.configurations.configs_for(env_name: Rails.env, name: "primary")
@@ -68,17 +59,17 @@ module ApplicationTests
         File.write("#{app_path}/config/database.yml", <<~YAML)
           test:
             adapter: sqlite3
-            database: db/test.sqlite3
+            database: storage/test.sqlite3
 
           development:
             adapter: sqlite3
-            database: db/development.sqlite3
+            database: storage/development.sqlite3
         YAML
 
         with_rails_env "development" do
           db_create_and_drop database_url_db_name do
-            assert_not File.exist?("#{app_path}/db/test.sqlite3")
-            assert_not File.exist?("#{app_path}/db/development.sqlite3")
+            assert_not File.exist?("#{app_path}/storage/test.sqlite3")
+            assert_not File.exist?("#{app_path}/storage/development.sqlite3")
           end
         end
       end
@@ -93,11 +84,30 @@ module ApplicationTests
 
         app_file "config/environments/development.rb", <<-RUBY
           Rails.application.configure do
-            config.database = "db/development.sqlite3"
+            config.database = "storage/development.sqlite3"
           end
         RUBY
 
-        db_create_and_drop("db/development.sqlite3", environment_loaded: false)
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
+      end
+
+      test "db:create and db:drop don't raise errors when loading YAML with alias ERB" do
+        app_file "config/database.yml", <<-YAML
+          sqlite: &sqlite
+            adapter: sqlite3
+            database: storage/development.sqlite3
+
+          development:
+            <<: *<%= ENV["DB"] || "sqlite" %>
+        YAML
+
+        app_file "config/environments/development.rb", <<-RUBY
+          Rails.application.configure do
+            config.database = "storage/development.sqlite3"
+          end
+        RUBY
+
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
       end
 
       test "db:create and db:drop don't raise errors when loading YAML with multiline ERB" do
@@ -111,30 +121,28 @@ module ApplicationTests
 
         app_file "config/environments/development.rb", <<-RUBY
           Rails.application.configure do
-            config.database = "db/development.sqlite3"
+            config.database = "storage/development.sqlite3"
           end
         RUBY
 
-        db_create_and_drop("db/development.sqlite3", environment_loaded: false)
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
       end
 
-      test "db:create and db:drop show warning but doesn't raise errors when loading YAML with alias ERB" do
+      test "db:create and db:drop don't raise errors when loading ERB accessing nested configurations" do
         app_file "config/database.yml", <<-YAML
-          sqlite: &sqlite
-            adapter: sqlite3
-            database: db/development.sqlite3
-
           development:
-            <<: *<%= ENV["DB"] || "sqlite" %>
+            database: storage/development.sqlite3
+            adapter: sqlite3
+            other: <%= Rails.application.config.other.value %>
         YAML
 
         app_file "config/environments/development.rb", <<-RUBY
           Rails.application.configure do
-            config.database = "db/development.sqlite3"
+            config.other = OpenStruct.new(value: 123)
           end
         RUBY
 
-        db_create_with_warning("db/development.sqlite3")
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
       end
 
       test "db:create and db:drop don't raise errors when loading YAML containing conditional statements in ERB" do
@@ -150,11 +158,11 @@ module ApplicationTests
 
         app_file "config/environments/development.rb", <<-RUBY
           Rails.application.configure do
-            config.database = "db/development.sqlite3"
+            config.database = "storage/development.sqlite3"
           end
         RUBY
 
-        db_create_and_drop("db/development.sqlite3", environment_loaded: false)
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
       end
 
       test "db:create and db:drop don't raise errors when loading YAML containing multiple ERB statements on the same line" do
@@ -166,44 +174,44 @@ module ApplicationTests
 
         app_file "config/environments/development.rb", <<-RUBY
           Rails.application.configure do
-            config.database = "db/development.sqlite3"
+            config.database = "storage/development.sqlite3"
           end
         RUBY
 
-        db_create_and_drop("db/development.sqlite3", environment_loaded: false)
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
       end
 
       test "db:create and db:drop don't raise errors when loading YAML with single-line ERB" do
         app_file "config/database.yml", <<-YAML
           development:
-            <%= Rails.application.config.database ? 'database: db/development.sqlite3' : 'database: db/development.sqlite3' %>
+            <%= Rails.application.config.database ? 'database: storage/development.sqlite3' : 'database: storage/development.sqlite3' %>
             adapter: sqlite3
         YAML
 
         app_file "config/environments/development.rb", <<-RUBY
           Rails.application.configure do
-            config.database = "db/development.sqlite3"
+            config.database = "storage/development.sqlite3"
           end
         RUBY
 
-        db_create_and_drop("db/development.sqlite3", environment_loaded: false)
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
       end
 
       test "db:create and db:drop don't raise errors when loading YAML which contains a key's value as an ERB statement" do
         app_file "config/database.yml", <<-YAML
           development:
-            database: <%= Rails.application.config.database ? 'db/development.sqlite3' : 'db/development.sqlite3' %>
+            database: <%= Rails.application.config.database ? 'storage/development.sqlite3' : 'storage/development.sqlite3' %>
             custom_option: <%= ENV['CUSTOM_OPTION'] %>
             adapter: sqlite3
         YAML
 
         app_file "config/environments/development.rb", <<-RUBY
           Rails.application.configure do
-            config.database = "db/development.sqlite3"
+            config.database = "storage/development.sqlite3"
           end
         RUBY
 
-        db_create_and_drop("db/development.sqlite3", environment_loaded: false)
+        db_create_and_drop("storage/development.sqlite3", environment_loaded: false)
       end
 
       def with_database_existing
@@ -224,8 +232,6 @@ module ApplicationTests
 
       def with_bad_permissions
         Dir.chdir(app_path) do
-          skip "Can't avoid permissions as root" if Process.uid.zero?
-
           set_database_url
           FileUtils.chmod("-w", "db")
           yield
@@ -233,14 +239,25 @@ module ApplicationTests
         end
       end
 
-      test "db:create failure because bad permissions" do
-        with_bad_permissions do
-          output = rails("db:create", allow_failure: true)
-          assert_match("Couldn't create '#{database_url_db_name}' database. Please check your configuration.", output)
-          assert_equal 1, $?.exitstatus
+      unless Process.uid.zero?
+        test "db:create failure because bad permissions" do
+          with_bad_permissions do
+            output = rails("db:create", allow_failure: true)
+            assert_match("Couldn't create '#{database_url_db_name}' database. Please check your configuration.", output)
+            assert_equal 1, $?.exitstatus
+          end
+        end
+
+        test "db:drop failure because bad permissions" do
+          with_database_existing do
+            with_bad_permissions do
+              output = rails("db:drop", allow_failure: true)
+              assert_match(/Couldn't drop/, output)
+              assert_equal 1, $?.exitstatus
+            end
+          end
         end
       end
-
       test "db:create works when schema cache exists and database does not exist" do
         use_postgresql
 
@@ -258,16 +275,6 @@ module ApplicationTests
       test "db:drop failure because database does not exist" do
         output = rails("db:drop:_unsafe", "--trace")
         assert_match(/does not exist/, output)
-      end
-
-      test "db:drop failure because bad permissions" do
-        with_database_existing do
-          with_bad_permissions do
-            output = rails("db:drop", allow_failure: true)
-            assert_match(/Couldn't drop/, output)
-            assert_equal 1, $?.exitstatus
-          end
-        end
       end
 
       test "db:truncate_all truncates all non-internal tables" do
@@ -352,6 +359,15 @@ module ApplicationTests
         end
       end
 
+      def db_schema_sql_dump
+        Dir.chdir(app_path) do
+          args = ["generate", "model", "book", "title:string"]
+          rails args
+          rails "db:migrate", "db:schema:dump"
+          assert_match(/CREATE TABLE/, File.read("db/structure.sql"))
+        end
+      end
+
       test "db:schema:dump without database_url" do
         db_schema_dump
       end
@@ -361,7 +377,29 @@ module ApplicationTests
         db_schema_dump
       end
 
-      def db_schema_cache_dump(filename = "db/schema_cache.yml")
+      test "db:schema:dump with env as ruby" do
+        add_to_config "config.active_record.schema_format = :sql"
+
+        old_env = ENV["SCHEMA_FORMAT"]
+        ENV["SCHEMA_FORMAT"] = "ruby"
+
+        db_schema_dump
+      ensure
+        ENV["SCHEMA_FORMAT"] = old_env
+      end
+
+      test "db:schema:dump with env as sql" do
+        add_to_config "config.active_record.schema_format = :ruby"
+
+        old_env = ENV["SCHEMA_FORMAT"]
+        ENV["SCHEMA_FORMAT"] = "sql"
+
+        db_schema_sql_dump
+      ensure
+        ENV["SCHEMA_FORMAT"] = old_env
+      end
+
+      def db_schema_cache_dump
         Dir.chdir(app_path) do
           rails "db:schema:cache:dump"
 
@@ -391,14 +429,14 @@ module ApplicationTests
                 statement_timeout: 1000
             development:
               <<: *default
-              database: db/development.sqlite3
+              database: storage/development.sqlite3
               schema_cache_path: db/special_schema_cache.yml
             YAML
           end
         end
 
         db_schema_dump
-        db_schema_cache_dump("db/special_schema_cache.yml")
+        db_schema_cache_dump
       end
 
       test "db:schema:cache:dump custom env" do
@@ -407,7 +445,7 @@ module ApplicationTests
         ENV["SCHEMA_CACHE"] = filename
 
         db_schema_dump
-        db_schema_cache_dump(filename)
+        db_schema_cache_dump
       ensure
         ENV["SCHEMA_CACHE"] = @old_schema_cache_env
       end
@@ -425,7 +463,7 @@ module ApplicationTests
             development:
               some_entry:
                 <<: *default
-                database: db/development.sqlite3
+                database: storage/development.sqlite3
               another_entry:
                 <<: *default
                 database: db/another_entry_development.sqlite3
@@ -436,6 +474,56 @@ module ApplicationTests
 
         db_schema_dump
         db_schema_cache_dump
+      end
+
+      test "db:schema:cache:dump dumps virtual columns" do
+        Dir.chdir(app_path) do
+          use_postgresql
+          rails "db:drop", "db:create"
+
+          rails "runner", <<~RUBY
+            ActiveRecord::Base.connection.create_table(:books) do |t|
+              t.integer :pages
+              t.virtual :pages_plus_1, type: :integer, as: "pages + 1", stored: true
+            end
+          RUBY
+
+          rails "db:schema:cache:dump"
+
+          virtual_column_exists = rails("runner", "p ActiveRecord::Base.connection.schema_cache.columns('books')[2].virtual?").strip
+          assert_equal "true", virtual_column_exists
+        end
+      end
+
+      test "db:schema:cache:dump ignores expired version" do
+        Dir.chdir(app_path) do
+          rails "generate", "model", "book", "title:string"
+          rails "db:schema:cache:dump"
+          rails "generate", "model", "cat", "color:string"
+          rails "db:migrate"
+
+          expired_warning = capture(:stderr) do
+            cache_size = rails("runner", "p ActiveRecord::Base.connection.schema_cache.size", stderr: true).strip
+            assert_equal "0", cache_size
+          end
+          assert_match(/Ignoring .*\.yml because it has expired/, expired_warning)
+        end
+      end
+
+      test "db:schema:cache:dump ignores validation errors" do
+        Dir.chdir(app_path) do
+          rails "generate", "model", "book", "title:string"
+          rails "db:migrate"
+          rails "db:schema:cache:dump"
+
+          ActiveRecord::Migrator.stub(:current_version, -> { raise ActiveRecord::ActiveRecordError, "stubbed error" }) do
+            validation_warning = capture(:stderr) do
+              cache_tables = rails("runner", "p ActiveRecord::Base.connection.schema_cache.columns('books')", stderr: true).strip
+              assert_includes cache_tables, "title", "expected cache_tables to include a title entry"
+            end
+            assert_match(/Failed to validate the schema cache because of ActiveRecord::ActiveRecordError: stubbed error/, validation_warning)
+          end
+        end
       end
 
       def db_fixtures_load(expected_database)
@@ -518,7 +606,7 @@ module ApplicationTests
         assert_match(/"geese"/, tables)
 
         columns = rails("runner", "p ActiveRecord::Base.connection.columns('geese').map(&:name)").strip
-        assert_equal columns, '["gooseid", "name"]'
+        assert_equal '["gooseid", "name"]', columns
       end
 
       test "db:schema:load fails if schema.rb doesn't exist yet" do
@@ -555,8 +643,8 @@ module ApplicationTests
         app_file "db/schema.rb", ""
         rails "db:setup"
 
-        test_environment = lambda { rails("runner", "-e", "test", "puts ActiveRecord::InternalMetadata[:environment]").strip }
-        development_environment = lambda { rails("runner", "puts ActiveRecord::InternalMetadata[:environment]").strip }
+        test_environment = lambda { rails("runner", "-e", "test", "puts ActiveRecord::Base.connection.internal_metadata[:environment]").strip }
+        development_environment = lambda { rails("runner", "puts ActiveRecord::Base.connection.internal_metadata[:environment]").strip }
 
         assert_equal "test", test_environment.call
         assert_equal "development", development_environment.call
@@ -576,7 +664,7 @@ module ApplicationTests
         app_file "db/schema.rb", ""
         rails "db:test:prepare"
 
-        test_environment = lambda { rails("runner", "-e", "test", "puts ActiveRecord::InternalMetadata[:environment]").strip }
+        test_environment = lambda { rails("runner", "-e", "test", "puts ActiveRecord::Base.connection.internal_metadata[:environment]").strip }
 
         assert_equal "test", test_environment.call
 
@@ -656,50 +744,74 @@ module ApplicationTests
         end
       end
 
-      test "db:prepare setup the database" do
+      test "db:prepare loads schema, runs pending migrations, and updates schema" do
         Dir.chdir(app_path) do
           rails "generate", "model", "book", "title:string"
           output = rails("db:prepare")
           assert_match(/CreateBooks: migrated/, output)
+          assert_match(/create_table "books"/, File.read("db/schema.rb"))
 
           output = rails("db:drop")
           assert_match(/Dropped database/, output)
 
           rails "generate", "model", "recipe", "title:string"
           output = rails("db:prepare")
-          assert_match(/CreateBooks: migrated/, output)
+          assert_no_match(/CreateBooks: migrated/, output) # loaded from schema
           assert_match(/CreateRecipes: migrated/, output)
+
+          schema = File.read("db/schema.rb")
+          assert_match(/create_table "books"/, schema)
+          assert_match(/create_table "recipes"/, schema)
+
+          tables = rails("runner", "p ActiveRecord::Base.connection.tables.sort").strip
+          assert_equal('["ar_internal_metadata", "books", "recipes", "schema_migrations"]', tables)
+
+          test_environment = lambda { rails("runner", "-e", "test", "puts ActiveRecord::Base.connection.internal_metadata[:environment]").strip }
+          development_environment = lambda { rails("runner", "puts ActiveRecord::Base.connection.internal_metadata[:environment]").strip }
+
+          assert_equal "development", development_environment.call
+          assert_equal "test", test_environment.call
         end
       end
 
-      test "db:prepare setup the database even if schema does not exist" do
-        Dir.chdir(app_path) do
-          use_postgresql(multi_db: true) # bug doesn't exist with sqlite3
-          output = rails("db:drop")
-          assert_match(/Dropped database/, output)
+      test "db:prepare loads schema when database exists but is empty" do
+        rails "generate", "model", "book", "title:string"
+        rails("db:prepare", "db:drop", "db:create")
 
-          rails "generate", "model", "recipe", "title:string"
-          output = rails("db:prepare")
-          assert_match(/CreateRecipes: migrated/, output)
-        end
-      ensure
-        rails "db:drop" rescue nil
+        output = rails("db:prepare")
+        assert_no_match(/CreateBooks: migrated/, output)
+
+        tables = rails("runner", "p ActiveRecord::Base.connection.tables.sort").strip
+        assert_equal('["ar_internal_metadata", "books", "schema_migrations"]', tables)
       end
 
-      test "db:prepare does not touch schema when dumping is disabled" do
+      test "db:prepare does not dump schema when dumping is disabled" do
         Dir.chdir(app_path) do
           rails "generate", "model", "book", "title:string"
           rails "db:create", "db:migrate"
 
-          app_file "db/schema.rb", "Not touched"
+          app_file "db/schema.rb", "# Not touched"
           app_file "config/initializers/disable_dumping_schema.rb", <<-RUBY
             Rails.application.config.active_record.dump_schema_after_migration = false
           RUBY
 
           rails "db:prepare"
 
-          assert_equal("Not touched", File.read("db/schema.rb").strip)
+          assert_equal("# Not touched", File.read("db/schema.rb").strip)
         end
+      end
+
+      test "db:prepare creates test database if it does not exist" do
+        Dir.chdir(app_path) do
+          db_name = use_postgresql
+          rails "db:drop", "db:create"
+          rails "runner", "ActiveRecord::Base.connection.drop_database(:#{db_name}_test)"
+
+          output = rails("db:prepare")
+          assert_match(%r{Created database '#{db_name}_test'}, output)
+        end
+      ensure
+        rails "db:drop" rescue nil
       end
 
       test "lazily loaded schema cache isn't read when reading the schema migrations table" do

@@ -10,7 +10,7 @@ module ActiveModel
     # keys matching the attribute names.
     #
     # If the passed hash responds to <tt>permitted?</tt> method and the return value
-    # of this method is +false+ an <tt>ActiveModel::ForbiddenAttributesError</tt>
+    # of this method is +false+ an ActiveModel::ForbiddenAttributesError
     # exception is raised.
     #
     #   class Cat
@@ -45,8 +45,10 @@ module ActiveModel
 
       def _assign_attribute(k, v)
         setter = :"#{k}="
+        public_send(setter, v)
+      rescue NoMethodError
         if respond_to?(setter)
-          public_send(setter, v)
+          raise
         else
           raise UnknownAttributeError.new(self, k.to_s)
         end

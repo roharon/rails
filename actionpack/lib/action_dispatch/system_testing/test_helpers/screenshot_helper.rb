@@ -42,7 +42,10 @@ module ActionDispatch
         #
         # +take_failed_screenshot+ is called during system test teardown.
         def take_failed_screenshot
-          take_screenshot if failed? && supports_screenshot? && Capybara::Session.instance_created?
+          return unless failed? && supports_screenshot? && Capybara::Session.instance_created?
+
+          take_screenshot
+          metadata[:failure_screenshot_path] = relative_image_path if Minitest::Runnable.method_defined?(:metadata)
         end
 
         private
@@ -62,7 +65,7 @@ module ActionDispatch
           end
 
           def image_name
-            sanitized_method_name = method_name.tr("/\\", "--")
+            sanitized_method_name = method_name.gsub(/[^\w]+/, "-")
             name = "#{unique}_#{sanitized_method_name}"
             name[0...225]
           end
@@ -85,6 +88,10 @@ module ActionDispatch
 
           def absolute_image_path
             "#{absolute_path}.png"
+          end
+
+          def relative_image_path
+            "#{absolute_path.relative_path_from(Rails.root)}.png"
           end
 
           def absolute_html_path

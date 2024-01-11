@@ -14,7 +14,7 @@ class FormatValidationTest < ActiveModel::TestCase
     Topic.validates_format_of(:title, :content, with: /\AValidation\smacros \w+!\z/, message: "is bad data")
 
     t = Topic.new("title" => "i'm incorrect", "content" => "Validation macros rule!")
-    assert t.invalid?, "Shouldn't be valid"
+    assert_predicate t, :invalid?, "Shouldn't be valid"
     assert_equal ["is bad data"], t.errors[:title]
     assert_empty t.errors[:content]
 
@@ -39,22 +39,22 @@ class FormatValidationTest < ActiveModel::TestCase
     Topic.validates_format_of(:title, :content, with: /\A[1-9][0-9]*\z/, message: "is bad data")
 
     t = Topic.new("title" => "72x", "content" => "6789")
-    assert t.invalid?, "Shouldn't be valid"
+    assert_predicate t, :invalid?, "Shouldn't be valid"
 
     assert_equal ["is bad data"], t.errors[:title]
     assert_empty t.errors[:content]
 
     t.title = "-11"
-    assert t.invalid?, "Shouldn't be valid"
+    assert_predicate t, :invalid?, "Shouldn't be valid"
 
     t.title = "03"
-    assert t.invalid?, "Shouldn't be valid"
+    assert_predicate t, :invalid?, "Shouldn't be valid"
 
     t.title = "z44"
-    assert t.invalid?, "Shouldn't be valid"
+    assert_predicate t, :invalid?, "Shouldn't be valid"
 
     t.title = "5v7"
-    assert t.invalid?, "Shouldn't be valid"
+    assert_predicate t, :invalid?, "Shouldn't be valid"
 
     t.title = "1"
 
@@ -120,6 +120,17 @@ class FormatValidationTest < ActiveModel::TestCase
     assert_predicate t, :valid?
   end
 
+  def test_validates_format_of_with_lambda_without_arguments
+    Topic.validates_format_of :title, with: lambda { /\A[A-Z]/ }
+
+    t = Topic.new
+    t.title = "lowercase"
+    assert_predicate t, :invalid?
+
+    t.title = "Titleized"
+    assert_predicate t, :valid?
+  end
+
   def test_validates_format_of_without_lambda
     Topic.validates_format_of :content, without: lambda { |topic| topic.title == "characters" ? /\A\d+\z/ : /\A\S+\z/ }
 
@@ -129,6 +140,17 @@ class FormatValidationTest < ActiveModel::TestCase
     assert_predicate t, :invalid?
 
     t.content = "Pixies"
+    assert_predicate t, :valid?
+  end
+
+  def test_validates_format_of_without_lambda_without_arguments
+    Topic.validates_format_of :title, without: lambda { /\d/ }
+
+    t = Topic.new
+    t.title = "With number 123"
+    assert_predicate t, :invalid?
+
+    t.title = "Without number"
     assert_predicate t, :valid?
   end
 

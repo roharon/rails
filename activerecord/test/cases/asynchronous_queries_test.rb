@@ -48,7 +48,7 @@ module AsynchronousQueriesSharedTests
 
     @connection.select_all "SELECT * FROM posts"
     result = @connection.select_all "SELECT * FROM posts", async: true
-    assert_equal ActiveRecord::Result, result.class
+    assert_equal ActiveRecord::FutureResult::Complete, result.class
   ensure
     ActiveRecord::Base.asynchronous_queries_tracker.finalize_session
     @connection.disable_query_cache!
@@ -86,9 +86,9 @@ module AsynchronousQueriesSharedTests
 
   private
     def wait_for_future_result(result)
-      100.times do
+      500.times do
         break unless result.pending?
-        sleep 0.01
+        sleep 0.02
       end
     end
 end
@@ -116,7 +116,7 @@ class AsynchronousQueriesTest < ActiveRecord::TestCase
     future_result = @connection.select_all "SELECT * FROM posts", async: true
 
     if in_memory_db?
-      assert_kind_of ActiveRecord::Result, future_result
+      assert_kind_of ActiveRecord::FutureResult::Complete, future_result
     else
       assert_kind_of ActiveRecord::FutureResult, future_result
       wait_for_future_result(future_result)
@@ -131,8 +131,6 @@ class AsynchronousQueriesTest < ActiveRecord::TestCase
 end
 
 class AsynchronousQueriesWithTransactionalTest < ActiveRecord::TestCase
-  self.use_transactional_tests = true
-
   include AsynchronousQueriesSharedTests
 
   def setup
@@ -158,7 +156,7 @@ class AsynchronousExecutorTypeTest < ActiveRecord::TestCase
     assert_nil async_pool1
     assert_nil async_pool2
 
-    assert_equal 2, handler.all_connection_pools.count
+    assert_equal 2, handler.connection_pool_list(:all).count
   ensure
     clean_up_connection_handler
     ActiveRecord.async_query_executor = old_value
@@ -190,7 +188,7 @@ class AsynchronousExecutorTypeTest < ActiveRecord::TestCase
     assert_equal 16, async_pool2.max_queue
     assert_equal :caller_runs, async_pool2.fallback_policy
 
-    assert_equal 2, handler.all_connection_pools.count
+    assert_equal 2, handler.connection_pool_list(:all).count
     assert_equal async_pool1, async_pool2
   ensure
     clean_up_connection_handler
@@ -227,7 +225,7 @@ class AsynchronousExecutorTypeTest < ActiveRecord::TestCase
     assert_equal 32, async_pool2.max_queue
     assert_equal :caller_runs, async_pool2.fallback_policy
 
-    assert_equal 2, handler.all_connection_pools.count
+    assert_equal 2, handler.connection_pool_list(:all).count
     assert_equal async_pool1, async_pool2
   ensure
     clean_up_connection_handler
@@ -281,7 +279,7 @@ class AsynchronousExecutorTypeTest < ActiveRecord::TestCase
     assert_equal 20, async_pool2.max_queue
     assert_equal :caller_runs, async_pool2.fallback_policy
 
-    assert_equal 2, handler.all_connection_pools.count
+    assert_equal 2, handler.connection_pool_list(:all).count
     assert_not_equal async_pool1, async_pool2
   ensure
     clean_up_connection_handler
@@ -316,7 +314,7 @@ class AsynchronousExecutorTypeTest < ActiveRecord::TestCase
     assert_equal 40, async_pool1.max_queue
     assert_equal :caller_runs, async_pool1.fallback_policy
 
-    assert_equal 2, handler.all_connection_pools.count
+    assert_equal 2, handler.connection_pool_list(:all).count
     assert_not_equal async_pool1, async_pool2
   ensure
     clean_up_connection_handler

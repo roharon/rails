@@ -382,7 +382,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
     assert_equal "title1", t1.title
     assert_equal 0, t1.lock_version
 
-    assert_queries(1) { t1.update(title: "title2") }
+    assert_queries_count(3) { t1.update(title: "title2") }
 
     t1.reload
     assert_equal "title2", t1.title
@@ -390,7 +390,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
 
     t2 = LockWithoutDefault.new(title: "title1")
 
-    assert_queries(1) { t2.save! }
+    assert_queries_count(3) { t2.save! }
 
     t2.reload
     assert_equal "title1", t2.title
@@ -439,7 +439,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
     assert_equal "title1", t1.title
     assert_equal 0, t1.custom_lock_version
 
-    assert_queries(1) { t1.update(title: "title2") }
+    assert_queries_count(3) { t1.update(title: "title2") }
 
     t1.reload
     assert_equal "title2", t1.title
@@ -447,7 +447,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
 
     t2 = LockWithCustomColumnWithoutDefault.new(title: "title1")
 
-    assert_queries(1) { t2.save! }
+    assert_queries_count(3) { t2.save! }
 
     t2.reload
     assert_equal "title1", t2.title
@@ -455,13 +455,15 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   end
 
   def test_readonly_attributes
-    assert_equal Set.new([ "name" ]), ReadonlyNameShip.readonly_attributes
+    assert_equal [ "name" ], ReadonlyNameShip.readonly_attributes
 
     s = ReadonlyNameShip.create(name: "unchangeable name")
     s.reload
     assert_equal "unchangeable name", s.name
 
-    s.update(name: "changed name")
+    assert_raises(ActiveRecord::ReadonlyAttributeError) do
+      s.update(name: "changed name")
+    end
     s.reload
     assert_equal "unchangeable name", s.name
   end
@@ -664,8 +666,8 @@ end
 # is so cumbersome. Will deadlock Ruby threads if the underlying db.execute
 # blocks, so separate script called by Kernel#system is needed.
 # (See exec vs. async_exec in the PostgreSQL adapter.)
-unless in_memory_db?
-  class PessimisticLockingTest < ActiveRecord::TestCase
+class PessimisticLockingTest < ActiveRecord::TestCase
+  unless in_memory_db?
     self.use_transactional_tests = false
     fixtures :people, :readers
 
@@ -716,7 +718,7 @@ unless in_memory_db?
       assert_nothing_raised do
         frog = ::Frog.create(name: "Old Frog")
         frog.name = "New Frog"
-        assert_not_deprecated do
+        assert_not_deprecated(ActiveRecord.deprecator) do
           frog.save!
         end
       end
@@ -759,7 +761,7 @@ unless in_memory_db?
       def test_lock_sending_custom_lock_statement
         Person.transaction do
           person = Person.find(1)
-          assert_sql(/LIMIT \$?\d FOR SHARE NOWAIT/) do
+          assert_queries_match(/LIMIT \$?\d FOR SHARE NOWAIT/) do
             person.lock!("FOR SHARE NOWAIT")
           end
         end
@@ -775,7 +777,7 @@ unless in_memory_db?
 
       def test_with_lock_locks_with_no_args
         person = Person.find 1
-        assert_sql(/LIMIT \$?\d FOR UPDATE/i) do
+        assert_queries_match(/LIMIT \$?\d FOR UPDATE/i) do
           person.with_lock do
           end
         end
@@ -788,29 +790,34 @@ unless in_memory_db?
     end
 
     private
-      def duel(zzz = 5, &block)
+      def duel(&block)
         t0, t1, t2, t3 = nil, nil, nil, nil
+
+        a_wakeup = Concurrent::Event.new
+        b_wakeup = Concurrent::Event.new
 
         a = Thread.new do
           t0 = Time.now
           Person.transaction do
             yield
-            sleep zzz       # block thread 2 for zzz seconds
+            b_wakeup.set
+            a_wakeup.wait
           end
           t1 = Time.now
         end
 
         b = Thread.new do
-          sleep zzz / 2.0   # ensure thread 1 tx starts first
+          b_wakeup.wait
           t2 = Time.now
           Person.transaction(&block)
+          a_wakeup.set
           t3 = Time.now
         end
 
         a.join
         b.join
 
-        assert t1 > t0 + zzz
+        assert t1 > t0
         assert t2 > t0
         assert t3 > t2
         [t0.to_f..t1.to_f, t2.to_f..t3.to_f]

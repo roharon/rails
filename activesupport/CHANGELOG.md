@@ -1,50 +1,110 @@
-*   Deprecate preserving the pre-Ruby 2.4 behavior of `to_time`
+*   Add `default:` support for `ActiveSupport::CurrentAttributes.attribute`
 
-    With Ruby 2.4+ the default for +to_time+ changed from converting to the
-    local system time to preserving the offset of the receiver. At the time Rails
-    supported older versions of Ruby so a compatibility layer was added to assist
-    in the migration process. From Rails 5.0 new applications have defaulted to 
-    the Ruby 2.4+ behavior and since Rails 7.0 now only supports Ruby 2.7+
-    this compatibility layer can be safely removed.
-    
-    To minimize any noise generated the deprecation warning only appears when the
-    setting is configured to `false` as that is the only scenario where the
-    removal of the compatibility layer has any effect.
-    
-    *Andrew White*
+    ```ruby
+    class Current < ActiveSupport::CurrentAttributes
+      attribute :counter, default: 0
+    end
+    ```
 
-*   `Pathname.blank?` only returns true for `Pathname.new("")`
+    *Sean Doyle*
 
-    Previously it would end up calling `Pathname#empty?` which returned true
-    if the path existed and was an empty directory or file.
+*   Yield instance to `Object#with` block
 
-    That behavior was unlikely to be expected.
+    ```ruby
+    client.with(timeout: 5_000) do |c|
+      c.get("/commits")
+    end
+    ```
+
+    *Sean Doyle*
+
+*   Use logical core count instead of physical core count to determine the
+    default number of workers when parallelizing tests.
+
+    *Jonathan Hefner*
+
+*   Fix `Time.now/DateTime.now/Date.today' to return results in a system timezone after `#travel_to'.
+
+    There is a bug in the current implementation of #travel_to:
+    it remembers a timezone of its argument, and all stubbed methods start
+    returning results in that remembered timezone. However, the expected
+    behaviour is to return results in a system timezone.
+
+    *Aleksei Chernenkov*
+
+*   Add `ErrorReported#unexpected` to report precondition violations.
+
+    For example:
+
+    ```ruby
+    def edit
+      if published?
+        Rails.error.unexpected("[BUG] Attempting to edit a published article, that shouldn't be possible")
+        return false
+      end
+      # ...
+    end
+    ```
+
+    The above will raise an error in development and test, but only report the error in production.
 
     *Jean Boussier*
 
-*   Deprecate `Notification::Event`'s `#children` and `#parent_of?`
+*   Make the order of read_multi and write_multi notifications for `Cache::Store#fetch_multi` operations match the order they are executed in.
 
-*   Change default serialization format of `MessageEncryptor` from `Marshal` to `JSON` for Rails 7.1.
+    *Adam Renberg Tamm*
 
-    Existing apps are provided with an upgrade path to migrate to `JSON` as described in `guides/source/upgrading_ruby_on_rails.md`
+*   Make return values of `Cache::Store#write` consistent.
 
-    *Zack Deveau* and *Martin Gingras*
+    The return value was not specified before. Now it returns `true` on a successful write,
+    `nil` if there was an error talking to the cache backend, and `false` if the write failed
+    for another reason (e.g. the key already exists and `unless_exist: true` was passed).
 
-*   Add `ActiveSupport::TestCase#stub_const` to stub a constant for the duration of a yield.
+    *Sander Verdonschot*
 
-    *DHH*
+*   Fix logged cache keys not always matching actual key used by cache action.
 
-*   Fix `ActiveSupport::EncryptedConfiguration` to be compatible with Psych 4
+    *Hartley McGuire*
 
-    *Stephen Sugden*
+*   Improve error messages of `assert_changes` and `assert_no_changes`
 
-*   Improve `File.atomic_write` error handling
+    `assert_changes` error messages now display objects with `.inspect` to make it easier
+    to differentiate nil from empty strings, strings from symbols, etc.
+    `assert_no_changes` error messages now surface the actual value.
 
-*   Fix `Class#descendants` and `DescendantsTracker#descendants` compatibility with Ruby 3.1.
+    *pcreux*
 
-    [The native `Class#descendants` was reverted prior to Ruby 3.1 release](https://bugs.ruby-lang.org/issues/14394#note-33),
-    but `Class#subclasses` was kept, breaking the feature detection.
+*   Fix `#to_fs(:human_size)` to correctly work with negative numbers.
 
-    *Jean Boussier*
+    *Earlopain*
 
-Please check [7-0-stable](https://github.com/rails/rails/blob/7-0-stable/activesupport/CHANGELOG.md) for previous changes.
+*   Fix `BroadcastLogger#dup` so that it duplicates the logger's `broadcasts`.
+
+    *Andrew Novoselac*
+
+*   Fix issue where `bootstrap.rb` overwrites the `level` of a `BroadcastLogger`'s `broadcasts`.
+
+    *Andrew Novoselac*
+
+*   Fix compatibility with the `semantic_logger` gem.
+
+    The `semantic_logger` gem doesn't behave exactly like stdlib logger in that
+    `SemanticLogger#level` returns a Symbol while stdlib `Logger#level` returns an Integer.
+
+    This caused the various `LogSubscriber` classes in Rails to break when assigned a
+    `SemanticLogger` instance.
+
+    *Jean Boussier*, *ojab*
+
+*   Fix MemoryStore to prevent race conditions when incrementing or decrementing.
+
+    *Pierre Jambet*
+
+*   Implement `HashWithIndifferentAccess#to_proc`.
+
+    Previously, calling `#to_proc` on `HashWithIndifferentAccess` object used inherited `#to_proc`
+    method from the `Hash` class, which was not able to access values using indifferent keys.
+
+    *fatkodima*
+
+Please check [7-1-stable](https://github.com/rails/rails/blob/7-1-stable/activesupport/CHANGELOG.md) for previous changes.

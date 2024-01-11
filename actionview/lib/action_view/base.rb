@@ -10,7 +10,7 @@ require "action_view/template"
 require "action_view/lookup_context"
 
 module ActionView # :nodoc:
-  # = Action View Base
+  # = Action View \Base
   #
   # Action View templates can be written in several ways.
   # If the template file has a <tt>.erb</tt> extension, then it uses the erubi[https://rubygems.org/gems/erubi]
@@ -44,9 +44,9 @@ module ActionView # :nodoc:
   # Using sub templates allows you to sidestep tedious replication and extract common display structures in shared templates. The
   # classic example is the use of a header and footer (even though the Action Pack-way would be to use Layouts):
   #
-  #   <%= render "shared/header" %>
+  #   <%= render "application/header" %>
   #   Something really specific and terrific
-  #   <%= render "shared/footer" %>
+  #   <%= render "application/footer" %>
   #
   # As you see, we use the output embeddings for the render methods. The render call itself will just return a string holding the
   # result of the rendering. The output embedding writes it to the current template.
@@ -55,7 +55,7 @@ module ActionView # :nodoc:
   # variables defined using the regular embedding tags. Like this:
   #
   #   <% @page_title = "A Wonderful Hello" %>
-  #   <%= render "shared/header" %>
+  #   <%= render "application/header" %>
   #
   # Now the header can pick up on the <tt>@page_title</tt> variable and use it for outputting a title tag:
   #
@@ -65,9 +65,9 @@ module ActionView # :nodoc:
   #
   # You can pass local variables to sub templates by using a hash with the variable names as keys and the objects as values:
   #
-  #   <%= render "shared/header", { headline: "Welcome", person: person } %>
+  #   <%= render "application/header", { headline: "Welcome", person: person } %>
   #
-  # These can now be accessed in <tt>shared/header</tt> with:
+  # These can now be accessed in <tt>application/header</tt> with:
   #
   #   Headline: <%= headline %>
   #   First name: <%= person.first_name %>
@@ -82,8 +82,8 @@ module ActionView # :nodoc:
   #
   # === Template caching
   #
-  # By default, Rails will compile each template to a method in order to render it. When you alter a template,
-  # Rails will check the file's modification time and recompile it in development mode.
+  # By default, \Rails will compile each template to a method in order to render it. When you alter a template,
+  # \Rails will check the file's modification time and recompile it in development mode.
   #
   # == Builder
   #
@@ -205,7 +205,8 @@ module ActionView # :nodoc:
     delegate :formats, :formats=, :locale, :locale=, :view_paths, :view_paths=, to: :lookup_context
 
     def assign(new_assigns) # :nodoc:
-      @_assigns = new_assigns.each { |key, value| instance_variable_set("@#{key}", value) }
+      @_assigns = new_assigns
+      new_assigns.each { |key, value| instance_variable_set("@#{key}", value) }
     end
 
     # :stopdoc:
@@ -232,16 +233,36 @@ module ActionView # :nodoc:
       @view_renderer = ActionView::Renderer.new @lookup_context
       @current_template = nil
 
-      assign(assigns)
       assign_controller(controller)
       _prepare_context
+
+      super()
+
+      # Assigns must be called last to minimize the number of shapes
+      assign(assigns)
     end
 
-    def _run(method, template, locals, buffer, add_to_stack: true, &block)
+    def _run(method, template, locals, buffer, add_to_stack: true, has_strict_locals: false, &block)
       _old_output_buffer, _old_virtual_path, _old_template = @output_buffer, @virtual_path, @current_template
       @current_template = template if add_to_stack
       @output_buffer = buffer
-      public_send(method, locals, buffer, &block)
+
+      if has_strict_locals
+        begin
+          public_send(method, buffer, **locals, &block)
+        rescue ArgumentError => argument_error
+          raise(
+            ArgumentError,
+            argument_error.
+              message.
+                gsub("unknown keyword:", "unknown local:").
+                gsub("missing keyword:", "missing local:").
+                gsub("no keywords accepted", "no locals accepted")
+          )
+        end
+      else
+        public_send(method, locals, buffer, &block)
+      end
     ensure
       @output_buffer, @virtual_path, @current_template = _old_output_buffer, _old_virtual_path, _old_template
     end

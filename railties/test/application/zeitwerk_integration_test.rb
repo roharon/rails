@@ -25,7 +25,7 @@ class ZeitwerkIntegrationTest < ActiveSupport::TestCase
   test "The integration is minimally looking good" do
     boot
 
-    assert Rails.autoloaders.zeitwerk_enabled?
+    assert_predicate Rails.autoloaders, :zeitwerk_enabled?
     assert_instance_of Zeitwerk::Loader, Rails.autoloaders.main
     assert_instance_of Zeitwerk::Loader, Rails.autoloaders.once
     assert_equal [Rails.autoloaders.main, Rails.autoloaders.once], Rails.autoloaders.to_a
@@ -56,6 +56,48 @@ class ZeitwerkIntegrationTest < ActiveSupport::TestCase
     assert RESTfulController
   end
 
+  test "root directories manually set by the user are honored (once)" do
+    app_file "extras1/x.rb", "ZeitwerkIntegrationTestExtras::X = true"
+    app_file "extras2/y.rb", "ZeitwerkIntegrationTestExtras::Y = true"
+
+    add_to_env_config "development", <<~'RUBY'
+      config.autoload_once_paths << "#{Rails.root}/extras1"
+      config.autoload_once_paths << Rails.root.join("extras2")
+
+      module ZeitwerkIntegrationTestExtras; end
+
+      autoloader = Rails.autoloaders.once
+      autoloader.push_dir("#{Rails.root}/extras1", namespace: ZeitwerkIntegrationTestExtras)
+      autoloader.push_dir("#{Rails.root}/extras2", namespace: ZeitwerkIntegrationTestExtras)
+    RUBY
+
+    boot
+
+    assert ZeitwerkIntegrationTestExtras::X
+    assert ZeitwerkIntegrationTestExtras::Y
+  end
+
+  test "root directories manually set by the user are honored (main)" do
+    app_file "app/services/x.rb", "ZeitwerkIntegrationTestServices::X = true"
+    app_file "extras/x.rb", "ZeitwerkIntegrationTestExtras::X = true"
+
+    app_file "config/initializers/namespaces.rb", <<~'RUBY'
+      module ZeitwerkIntegrationTestServices; end
+      module ZeitwerkIntegrationTestExtras; end
+
+      ActiveSupport::Dependencies.autoload_paths << Rails.root.join("extras")
+
+      Rails.autoloaders.main.tap do |main|
+        main.push_dir("#{Rails.root}/app/services", namespace: ZeitwerkIntegrationTestServices)
+        main.push_dir("#{Rails.root}/extras", namespace: ZeitwerkIntegrationTestExtras)
+      end
+    RUBY
+
+    boot
+
+    assert ZeitwerkIntegrationTestServices::X
+    assert ZeitwerkIntegrationTestExtras::X
+  end
 
   test "the once autoloader can autoload from initializers" do
     app_file "extras0/x.rb", "X = 0"
@@ -78,7 +120,7 @@ class ZeitwerkIntegrationTest < ActiveSupport::TestCase
     end
     RUBY
 
-    app_file "config/initializers/autoload_Y.rb", "Y"
+    app_file "config/initializers/autoload_Y.rb", "Y.succ"
 
     # Preconditions.
     assert_not Object.const_defined?(:X)
@@ -138,15 +180,19 @@ class ZeitwerkIntegrationTest < ActiveSupport::TestCase
     assert $zeitwerk_integration_test_post
   end
 
-  test "reloading is enabled if config.cache_classes is false" do
+  test "reloading is enabled if config.enable_reloading is true" do
+    add_to_env_config "development", "config.enable_reloading = true"
+
     boot
 
-    assert     Rails.autoloaders.main.reloading_enabled?
+    assert_predicate Rails.autoloaders.main, :reloading_enabled?
     assert_not Rails.autoloaders.once.reloading_enabled?
   end
 
-  test "reloading is disabled if config.cache_classes is true" do
-    boot("production")
+  test "reloading is disabled if config.enable_reloading is false" do
+    add_to_env_config "development", "config.enable_reloading = false"
+
+    boot
 
     assert_not Rails.autoloaders.main.reloading_enabled?
     assert_not Rails.autoloaders.once.reloading_enabled?
@@ -188,27 +234,17 @@ class ZeitwerkIntegrationTest < ActiveSupport::TestCase
     $zeitwerk_integration_test_user = false
     app_file "app/models/user.rb", "class User; end; $zeitwerk_integration_test_user = true"
 
-    $zeitwerk_integration_test_lib = false
-    app_dir "lib"
-    app_file "lib/webhook_hacks.rb", "WebhookHacks = 1; $zeitwerk_integration_test_lib = true"
-
     $zeitwerk_integration_test_extras = false
     app_dir "extras"
     app_file "extras/websocket_hacks.rb", "WebsocketHacks = 1; $zeitwerk_integration_test_extras = true"
-
-    add_to_config "config.autoload_paths      << '#{app_path}/lib'"
     add_to_config "config.autoload_once_paths << '#{app_path}/extras'"
 
     boot("production")
 
     assert $zeitwerk_integration_test_user
-    assert_not $zeitwerk_integration_test_lib
     assert_not $zeitwerk_integration_test_extras
 
-    assert WebhookHacks
     assert WebsocketHacks
-
-    assert $zeitwerk_integration_test_lib
     assert $zeitwerk_integration_test_extras
   end
 
@@ -260,6 +296,19 @@ class ZeitwerkIntegrationTest < ActiveSupport::TestCase
     ActiveSupport::Dependencies.clear
 
     assert_equal %i(main_autoloader), $zeitwerk_integration_reload_test
+  end
+
+  test "reloading eager loads again, if enabled" do
+    add_to_env_config "development", "config.eager_load = true"
+
+    $zeitwerk_integration_test_eager_load_count = 0
+    app_file "app/models/user.rb", "class User; end; $zeitwerk_integration_test_eager_load_count += 1"
+
+    boot
+    assert_equal 1, $zeitwerk_integration_test_eager_load_count
+
+    Rails.application.reloader.reload!
+    assert_equal 2, $zeitwerk_integration_test_eager_load_count
   end
 
   test "reloading clears autoloaded tracked classes" do
