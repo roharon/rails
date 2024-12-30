@@ -220,8 +220,9 @@ module ActionView
       # +:form_class+ option within +html_options+. It defaults to
       # <tt>"button_to"</tt> to allow styling of the form and its children.
       #
-      # The form submits a POST request by default. You can specify a different
-      # HTTP verb via the +:method+ option within +html_options+.
+      # The form submits a POST request by default if the object is not persisted;
+      # conversely, if the object is persisted, it will submit a PATCH request.
+      # To specify a different HTTP verb use the +:method+ option within +html_options+.
       #
       # If the HTML button generated from +button_to+ does not work with your layout, you can
       # consider using the +link_to+ method with the +data-turbo-method+
@@ -555,14 +556,14 @@ module ActionView
 
         options ||= options_as_kwargs
         check_parameters ||= options.is_a?(Hash) && options.delete(:check_parameters)
-        url_string = URI::DEFAULT_PARSER.unescape(url_for(options)).force_encoding(Encoding::BINARY)
+        url_string = URI::RFC2396_PARSER.unescape(url_for(options)).force_encoding(Encoding::BINARY)
 
         # We ignore any extra parameters in the request_uri if the
         # submitted URL doesn't have any either. This lets the function
         # work with things like ?order=asc
         # the behavior can be disabled with check_parameters: true
         request_uri = url_string.index("?") || check_parameters ? request.fullpath : request.path
-        request_uri = URI::DEFAULT_PARSER.unescape(request_uri).force_encoding(Encoding::BINARY)
+        request_uri = URI::RFC2396_PARSER.unescape(request_uri).force_encoding(Encoding::BINARY)
 
         if %r{^\w+://}.match?(url_string)
           request_uri = +"#{request.protocol}#{request.host_with_port}#{request_uri}"
@@ -709,7 +710,7 @@ module ActionView
         end
 
         def add_method_to_attributes!(html_options, method)
-          if method_not_get_method?(method) && !html_options["rel"]&.include?("nofollow")
+          if method_not_get_method?(method) && !html_options["rel"].to_s.include?("nofollow")
             if html_options["rel"].blank?
               html_options["rel"] = "nofollow"
             else

@@ -95,6 +95,8 @@ module ActiveSupport
 
     INVALID_ATTRIBUTE_NAMES = [:set, :reset, :resets, :instance, :before_reset, :after_reset, :reset_all, :clear_all] # :nodoc:
 
+    NOT_SET = Object.new.freeze # :nodoc:
+
     class << self
       # Returns singleton instance for this class in this thread. If none exists, one is created.
       def instance
@@ -109,7 +111,7 @@ module ActiveSupport
       # is a proc or lambda, it will be called whenever an instance is
       # constructed. Otherwise, the value will be duplicated with +#dup+.
       # Default values are re-assigned when the attributes are reset.
-      def attribute(*names, default: nil)
+      def attribute(*names, default: NOT_SET)
         invalid_attribute_names = names.map(&:to_sym) & INVALID_ATTRIBUTE_NAMES
         if invalid_attribute_names.any?
           raise ArgumentError, "Restricted attribute names: #{invalid_attribute_names.join(", ")}"
@@ -120,19 +122,20 @@ module ActiveSupport
             owner.define_cached_method(name, namespace: :current_attributes) do |batch|
               batch <<
                 "def #{name}" <<
-                "attributes[:#{name}]" <<
+                "@attributes[:#{name}]" <<
                 "end"
             end
             owner.define_cached_method("#{name}=", namespace: :current_attributes) do |batch|
               batch <<
                 "def #{name}=(value)" <<
-                "attributes[:#{name}] = value" <<
+                "@attributes[:#{name}] = value" <<
                 "end"
             end
           end
         end
 
-        singleton_class.delegate(*names.flat_map { |name| [name, "#{name}="] }, to: :instance, as: self)
+        Delegation.generate(singleton_class, names, to: :instance, nilable: false, signature: "")
+        Delegation.generate(singleton_class, names.map { |n| "#{n}=" }, to: :instance, nilable: false, signature: "value")
 
         self.defaults = defaults.merge(names.index_with { default })
       end
@@ -181,19 +184,24 @@ module ActiveSupport
         end
 
         def method_added(name)
+          super
           return if name == :initialize
           return unless public_method_defined?(name)
           return if respond_to?(name, true)
-          singleton_class.delegate(name, to: :instance, as: self)
+          Delegation.generate(singleton_class, [name], to: :instance, as: self, nilable: false)
         end
     end
 
     class_attribute :defaults, instance_writer: false, default: {}.freeze
 
-    attr_accessor :attributes
+    attr_writer :attributes
 
     def initialize
       @attributes = resolve_defaults
+    end
+
+    def attributes
+      @attributes.dup
     end
 
     # Expose one or more attributes within a block. Old values are returned after the block concludes.
@@ -219,8 +227,10 @@ module ActiveSupport
 
     private
       def resolve_defaults
-        defaults.transform_values do |value|
-          Proc === value ? value.call : value.dup
+        defaults.each_with_object({}) do |(key, value), result|
+          if value != NOT_SET
+            result[key] = Proc === value ? value.call : value.dup
+          end
         end
       end
   end

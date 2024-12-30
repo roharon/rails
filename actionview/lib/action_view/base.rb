@@ -80,6 +80,23 @@ module ActionView # :nodoc:
   # This is useful in cases where you aren't sure if the local variable has been assigned. Alternatively, you could also use
   # <tt>defined? headline</tt> to first check if the variable has been assigned before using it.
   #
+  # By default, templates will accept any <tt>locals</tt> as keyword arguments. To restrict what <tt>locals</tt> a template accepts, add a <tt>locals:</tt> magic comment:
+  #
+  #   <%# locals: (headline:) %>
+  #
+  #   Headline: <%= headline %>
+  #
+  # In cases where the local variables are optional, declare the keyword argument with a default value:
+  #
+  #   <%# locals: (headline: nil) %>
+  #
+  #   <% unless headline.nil? %>
+  #   Headline: <%= headline %>
+  #   <% end %>
+  #
+  # Read more about strict locals in {Action View Overview}[https://guides.rubyonrails.org/action_view_overview.html#strict-locals]
+  # in the guides.
+  #
   # === Template caching
   #
   # By default, \Rails will compile each template to a method in order to render it. When you alter a template,
@@ -136,8 +153,7 @@ module ActionView # :nodoc:
   #     end
   #   end
   #
-  # For more information on Builder please consult the {source
-  # code}[https://github.com/jimweirich/builder].
+  # For more information on Builder please consult the {source code}[https://github.com/rails/builder].
   class Base
     include Helpers, ::ERB::Util, Context
 
@@ -249,7 +265,7 @@ module ActionView # :nodoc:
 
       if has_strict_locals
         begin
-          public_send(method, buffer, **locals, &block)
+          public_send(method, locals, buffer, **locals, &block)
         rescue ArgumentError => argument_error
           raise(
             ArgumentError,
@@ -257,7 +273,8 @@ module ActionView # :nodoc:
               message.
                 gsub("unknown keyword:", "unknown local:").
                 gsub("missing keyword:", "missing local:").
-                gsub("no keywords accepted", "no locals accepted")
+                gsub("no keywords accepted", "no locals accepted").
+                concat(" for #{@current_template.short_identifier}")
           )
         end
       else

@@ -28,7 +28,7 @@ class ActiveStorage::Attachment < ActiveStorage::Record
   # :method:
   #
   # Returns the associated ActiveStorage::Blob.
-  belongs_to :blob, class_name: "ActiveStorage::Blob", autosave: true
+  belongs_to :blob, class_name: "ActiveStorage::Blob", autosave: true, inverse_of: :attachments
 
   delegate_missing_to :blob
   delegate :signed_id, to: :blob
@@ -132,8 +132,18 @@ class ActiveStorage::Attachment < ActiveStorage::Record
     end
 
     def transform_variants_later
-      named_variants.each do |_name, named_variant|
-        blob.preprocessed(named_variant.transformations) if named_variant.preprocessed?(record)
+      preprocessed_variations = named_variants.filter_map { |_name, named_variant|
+        if named_variant.preprocessed?(record)
+          named_variant.transformations
+        end
+      }
+
+      if blob.preview_image_needed_before_processing_variants? && preprocessed_variations.any?
+        blob.create_preview_image_later(preprocessed_variations)
+      else
+        preprocessed_variations.each do |transformations|
+          blob.preprocessed(transformations)
+        end
       end
     end
 
@@ -146,7 +156,7 @@ class ActiveStorage::Attachment < ActiveStorage::Record
     end
 
     def named_variants
-      record.attachment_reflections[name]&.named_variants
+      record.attachment_reflections[name]&.named_variants || {}
     end
 
     def transformations_by_name(transformations)

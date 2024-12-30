@@ -171,7 +171,7 @@ class NestedThroughAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_has_many_through_has_one_with_has_many_through_source_reflection_preload
-    ActiveRecord::Base.connection.table_alias_length  # preheat cache
+    ActiveRecord::Base.lease_connection.table_alias_length  # preheat cache
     member = assert_queries_count(4) { Member.includes(:organization_member_details).first }
     groucho_details, other_details = member_details(:groucho), member_details(:some_other_guy)
 
@@ -637,6 +637,19 @@ class NestedThroughAssociationsTest < ActiveRecord::TestCase
     hotel = Hotel.create!(departments: [department])
 
     assert_equal hotel, Hotel.joins(:cake_designers, :drink_designers).take
+  end
+
+  def test_has_many_through_polymorphic_with_scope
+    Post.delete_all
+
+    post = Post.create!(title: "Catchy Title", body: "Interesting body.")
+    category = Category.create!(name: "Anything")
+    Post::CategoryPost.create!(post: post, category: category)
+
+    author = authors(:bob)
+    Essay.create!(writer: author, category: category)
+
+    assert_equal 1, Post.joins(:authors_of_essays_named_bob).count
   end
 
   def test_has_many_through_reset_source_reflection_after_loading_is_complete

@@ -164,7 +164,7 @@ class StoreTest < ActiveRecord::TestCase
   end
 
   test "saved changes tracking for accessors with json column" do
-    if current_adapter?(:Mysql2Adapter, :TrilogyAdapter) && ActiveRecord::Base.connection.mariadb?
+    if current_adapter?(:Mysql2Adapter, :TrilogyAdapter) && ActiveRecord::Base.lease_connection.mariadb?
       skip "MariaDB doesn't support JSON store_accessor"
     end
     @john.enable_friend_requests = true
@@ -218,6 +218,14 @@ class StoreTest < ActiveRecord::TestCase
     assert_equal true, user.settings.instance_of?(ActiveSupport::HashWithIndifferentAccess)
     assert_equal "blue", user.settings[:color][:jenny]
     assert_equal "blue", user.color[:jenny]
+  end
+
+  test "store takes precedence when updating store and accessor" do
+    user = Admin::User.find_by_name("Jamis")
+    user.update(settings: { homepage: "rails" }, homepage: "not rails")
+
+    assert_equal "rails", user.settings[:homepage]
+    assert_equal "rails", user.homepage
   end
 
   def test_convert_store_attributes_from_Hash_to_HashWithIndifferentAccess_saving_the_data_and_access_attributes_indifferently
@@ -358,5 +366,19 @@ class StoreTest < ActiveRecord::TestCase
 
   test "prefix/suffix do not affect stored attributes" do
     assert_equal [:secret_question, :two_factor_auth, :login_retry], Admin::User.stored_attributes[:configs]
+  end
+
+  test "store_accessor raises an exception if the column is not either serializable or a structured type" do
+    user = Class.new(Admin::User) do
+      store_accessor :name, :color
+    end.new
+
+    assert_raises ActiveRecord::ConfigurationError do
+      user.color
+    end
+
+    assert_raises ActiveRecord::ConfigurationError do
+      user.color = "blue"
+    end
   end
 end

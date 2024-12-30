@@ -12,7 +12,7 @@ module RailInspector
       end
 
       def call(path)
-        @cache[path] ||= SyntaxTree.parse(SyntaxTree.read(path))
+        @cache[path] ||= Prism.parse_file(path.to_s).value
       end
     end
 
@@ -81,6 +81,14 @@ module RailInspector
 
     def write!
       File.write(doc_path, doc.to_s)
+    end
+
+    def error_message
+      return unless errors.any?
+
+      errors.join("\n") + "\n" +
+        "Make sure new configurations are added to configuring.md#rails-general-configuration in alphabetical order.\n" +
+        "Errors may be autocorrectable with the --autocorrect flag"
     end
 
     private

@@ -5,7 +5,7 @@ require "active_support/error_reporter/test_helper"
 
 class WarningsTest < ActiveRecord::AbstractMysqlTestCase
   def setup
-    @connection = ActiveRecord::Base.connection
+    @connection = ActiveRecord::Base.lease_connection
     @original_db_warnings_action = :ignore
   end
 
@@ -101,7 +101,7 @@ class WarningsTest < ActiveRecord::AbstractMysqlTestCase
           @connection.execute('SELECT "x"')
         end
 
-        expected = "Query had warning_count=1 but ‘SHOW WARNINGS’ did not return the warnings. Check MySQL logs or database configuration."
+        expected = "Query had warning_count=1 but `SHOW WARNINGS` did not return the warnings. Check MySQL logs or database configuration."
         assert_equal expected, error.message
       end
     end

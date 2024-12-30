@@ -1,85 +1,21 @@
-*   Raise `ArgumentError` if `:renderable` object does not respond to `#render_in`
+*   Improve error highlighting of multi-line methods in ERB templates or
+    templates where the error occurs within a do-end block.
 
-    *Sean Doyle*
+    *Martin Emde*
 
-*   Add the `nonce: true` option for `stylesheet_link_tag` helper to support automatic nonce generation for Content Security Policy.
-    Works the same way as `javascript_include_tag nonce: true` does.
+*   Fix a crash in ERB template error highlighting when the error occurs on a
+    line in the compiled template that is past the end of the source template.
 
-    *Akhil G Krishnan*, *AJ Esler*
+    *Martin Emde*
 
-*   Parse `ActionView::TestCase#rendered` HTML content as `Nokogiri::XML::DocumentFragment` instead of `Nokogiri::XML::Document`
+*   Improve reliability of ERB template error highlighting.
+    Fix infinite loops and crashes in highlighting and
+    improve tolerance for alternate ERB handlers.
 
-    *Sean Doyle*
+    *Martin Emde*
 
-*   Rename `ActionView::TestCase::Behavior::Content` to `ActionView::TestCase::Behavior::RenderedViewContent`
+*   Allow `hidden_field` and `hidden_field_tag` to accept a custom autocomplete value.
 
-    Make `RenderedViewContent` inherit from `String`. Make private API with `:nodoc:`
+    *brendon*
 
-    *Sean Doyle*
-
-*   Raise `ArgumentError` when `nil` is passed as `model:` argument value to the `form_with` method.
-
-    *Collin Jilbert*
-
-*   Alias `field_set_tag` helper to `fieldset_tag` to match `<fieldset>` element
-
-    *Sean Doyle*
-
-*   Deprecate passing content to void elements when using `tag.br` type tag builders.
-
-    *Hartley McGuire*
-
-*   Fix the `number_to_human_size` view helper to correctly work with negative numbers.
-
-    *Earlopain*
-
-*   Automatically discard the implicit locals injected by collection rendering for template that can't accept them
-
-    When rendering a collection, two implicit variables are injected, which breaks templates with strict locals.
-
-    Now they are only passed if the template will actually accept them.
-
-    *Yasha Krasnou*, *Jean Boussier*
-
-*   Fix `@rails/ujs` calling `start()` an extra time when using bundlers
-
-    *Hartley McGuire*, *Ryunosuke Sato*
-
-*   Fix the `capture` view helper compatibility with HAML and Slim
-
-    When a blank string was captured in HAML or Slim (and possibly other template engines)
-    it would instead return the entire buffer.
-
-    *Jean Boussier*
-
-*   Updated `@rails/ujs` files to ignore certain data-* attributes when element is contenteditable.
-
-    This fix was already landed in >= 7.0.4.3, < 7.1.0.
-    [[CVE-2023-23913](https://github.com/advisories/GHSA-xp5h-f8jf-rc8q)]
-
-    *Ryunosuke Sato*
-
-*   Added validation for HTML tag names in the `tag` and `content_tag` helper method. The `tag` and
-    `content_tag` method now checks that the provided tag name adheres to the HTML specification. If
-    an invalid HTML tag name is provided, the method raises an `ArgumentError` with an appropriate error
-    message.
-
-    Examples:
-
-    ```ruby
-    # Raises ArgumentError: Invalid HTML5 tag name: 12p
-    content_tag("12p") # Starting with a number
-
-    # Raises ArgumentError: Invalid HTML5 tag name: ""
-    content_tag("") # Empty tag name
-
-    # Raises ArgumentError: Invalid HTML5 tag name: div/
-    tag("div/") # Contains a solidus
-
-    # Raises ArgumentError: Invalid HTML5 tag name: "image file"
-    tag("image file") # Contains a space
-    ```
-
-    *Akhil G Krishnan*
-
-Please check [7-1-stable](https://github.com/rails/rails/blob/7-1-stable/actionview/CHANGELOG.md) for previous changes.
+Please check [8-0-stable](https://github.com/rails/rails/blob/8-0-stable/actionview/CHANGELOG.md) for previous changes.

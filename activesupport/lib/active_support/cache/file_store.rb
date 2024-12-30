@@ -58,7 +58,12 @@ module ActiveSupport
       #   cache.increment("baz") # => 6
       #
       def increment(name, amount = 1, options = nil)
-        modify_value(name, amount, options)
+        options = merged_options(options)
+        key = normalize_key(name, options)
+
+        instrument(:increment, key, amount: amount) do
+          modify_value(name, amount, options)
+        end
       end
 
       # Decrement a cached integer value. Returns the updated value.
@@ -73,7 +78,12 @@ module ActiveSupport
       #   cache.decrement("baz") # => 4
       #
       def decrement(name, amount = 1, options = nil)
-        modify_value(name, -amount, options)
+        options = merged_options(options)
+        key = normalize_key(name, options)
+
+        instrument(:decrement, key, amount: amount) do
+          modify_value(name, -amount, options)
+        end
       end
 
       def delete_matched(matcher, options = nil)
@@ -210,13 +220,12 @@ module ActiveSupport
         # Modifies the amount of an integer value that is stored in the cache.
         # If the key is not found it is created and set to +amount+.
         def modify_value(name, amount, options)
-          file_name = normalize_key(name, options)
           options = merged_options(options)
           key = normalize_key(name, options)
           version = normalize_version(name, options)
           amount = Integer(amount)
 
-          lock_file(file_name) do
+          lock_file(key) do
             entry = read_entry(key, **options)
 
             if !entry || entry.expired? || entry.mismatched?(version)

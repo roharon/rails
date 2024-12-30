@@ -20,8 +20,8 @@ class QueryLogsTest < ActiveRecord::TestCase
     ActiveRecord::QueryLogs.prepend_comment = false
     ActiveRecord::QueryLogs.cache_query_log_tags = false
     ActiveRecord::QueryLogs.cached_comment = nil
-    ActiveRecord::QueryLogs.taggings[:application] = -> {
-      "active_record"
+    ActiveRecord::QueryLogs.taggings = {
+      application: -> { "active_record" }
     }
   end
 
@@ -33,7 +33,7 @@ class QueryLogsTest < ActiveRecord::TestCase
     ActiveRecord::QueryLogs.prepend_comment = false
     ActiveRecord::QueryLogs.cache_query_log_tags = false
     ActiveRecord::QueryLogs.clear_cache
-    ActiveRecord::QueryLogs.update_formatter(:legacy)
+    ActiveRecord::QueryLogs.tags_formatter = :legacy
 
     # ActiveSupport::ExecutionContext context is automatically reset in Rails app via an executor hooks set in railtie
     # But not in Active Record's own test suite.
@@ -45,7 +45,8 @@ class QueryLogsTest < ActiveRecord::TestCase
   end
 
   def test_escaping_good_comment_with_custom_separator
-    ActiveRecord::QueryLogs.update_formatter(:sqlcommenter)
+    ActiveRecord::QueryLogs.tags_formatter = :sqlcommenter
+
     assert_equal "app='foo'", ActiveRecord::QueryLogs.send(:escape_sql_comment, "app='foo'")
   end
 
@@ -59,7 +60,7 @@ class QueryLogsTest < ActiveRecord::TestCase
     ActiveRecord::QueryLogs.tags = [ :application ]
 
     assert_queries_match(%r{select id from posts /\*application:active_record\*/$}) do
-      ActiveRecord::Base.connection.execute "select id from posts"
+      ActiveRecord::Base.lease_connection.execute "select id from posts"
     end
   end
 
@@ -68,7 +69,7 @@ class QueryLogsTest < ActiveRecord::TestCase
     ActiveRecord::QueryLogs.prepend_comment = true
 
     assert_queries_match(%r{/\*application:active_record\*/ select id from posts$}) do
-      ActiveRecord::Base.connection.execute "select id from posts"
+      ActiveRecord::Base.lease_connection.execute "select id from posts"
     end
   end
 
@@ -120,11 +121,11 @@ class QueryLogsTest < ActiveRecord::TestCase
     ActiveRecord::QueryLogs.tags = [ { query_counter: -> { i += 1 } } ]
 
     assert_queries_match("SELECT 1 /*query_counter:1*/") do
-      ActiveRecord::Base.connection.execute "SELECT 1"
+      ActiveRecord::Base.lease_connection.execute "SELECT 1"
     end
 
     assert_queries_match("SELECT 1 /*query_counter:1*/") do
-      ActiveRecord::Base.connection.execute "SELECT 1"
+      ActiveRecord::Base.lease_connection.execute "SELECT 1"
     end
   end
 
@@ -134,13 +135,13 @@ class QueryLogsTest < ActiveRecord::TestCase
     ActiveRecord::QueryLogs.tags = [ temporary_tag: ->(context) { context[:temporary] } ]
 
     assert_queries_match("SELECT 1 /*temporary_tag:value*/") do
-      ActiveRecord::Base.connection.execute "SELECT 1"
+      ActiveRecord::Base.lease_connection.execute "SELECT 1"
     end
 
     ActiveSupport::ExecutionContext[:temporary] = "new_value"
 
     assert_queries_match("SELECT 1 /*temporary_tag:new_value*/") do
-      ActiveRecord::Base.connection.execute "SELECT 1"
+      ActiveRecord::Base.lease_connection.execute "SELECT 1"
     end
   end
 
@@ -157,7 +158,7 @@ class QueryLogsTest < ActiveRecord::TestCase
   end
 
   def test_connection_is_passed_to_tagging_proc
-    connection = ActiveRecord::Base.connection
+    connection = ActiveRecord::Base.lease_connection
     ActiveRecord::QueryLogs.tags = [ same_connection: ->(context) { context[:connection] == connection } ]
 
     assert_queries_match("SELECT 1 /*same_connection:true*/") do
@@ -171,19 +172,21 @@ class QueryLogsTest < ActiveRecord::TestCase
     ActiveRecord::QueryLogs.tags = [ fake_connection: ->(context) { context[:connection] == fake_connection } ]
 
     assert_queries_match("SELECT 1 /*fake_connection:true*/") do
-      ActiveRecord::Base.connection.execute "SELECT 1"
+      ActiveRecord::Base.lease_connection.execute "SELECT 1"
     end
   end
 
   def test_empty_comments_are_not_added
     ActiveRecord::QueryLogs.tags = [ empty: -> { nil } ]
     assert_queries_match(%r{select id from posts$}) do
-      ActiveRecord::Base.connection.execute "select id from posts"
+      ActiveRecord::Base.lease_connection.execute "select id from posts"
     end
   end
 
   def test_sql_commenter_format
-    ActiveRecord::QueryLogs.update_formatter(:sqlcommenter)
+    ActiveRecord::QueryLogs.tags_formatter = :sqlcommenter
+    ActiveRecord::QueryLogs.tags = [:application]
+
     assert_queries_match(%r{/\*application='active_record'\*/}) do
       Dashboard.first
     end
@@ -211,13 +214,13 @@ class QueryLogsTest < ActiveRecord::TestCase
       { custom_proc: -> { "test content" }, another_proc: -> { "more test content" } },
     ]
 
-    assert_queries_match(%r{/\*application:active_record,custom_proc:test content,another_proc:more test content\*/}) do
+    assert_queries_match(%r{/\*another_proc:more test content,application:active_record,custom_proc:test content\*/}) do
       Dashboard.first
     end
   end
 
   def test_sqlcommenter_format_value
-    ActiveRecord::QueryLogs.update_formatter(:sqlcommenter)
+    ActiveRecord::QueryLogs.tags_formatter = :sqlcommenter
 
     ActiveRecord::QueryLogs.tags = [
       :application,
@@ -229,8 +232,25 @@ class QueryLogsTest < ActiveRecord::TestCase
     end
   end
 
+  def test_sqlcommenter_format_allows_string_keys
+    ActiveRecord::QueryLogs.tags_formatter = :sqlcommenter
+
+    ActiveRecord::QueryLogs.tags = [
+      :application,
+      {
+        "string" => "value",
+        tracestate: "congo=t61rcWkgMzE,rojo=00f067aa0ba902b7",
+        custom_proc: -> { "Joe's Shack" }
+      },
+    ]
+
+    assert_queries_match(%r{custom_proc='Joe%27s%20Shack',string='value',tracestate='congo%3Dt61rcWkgMzE%2Crojo%3D00f067aa0ba902b7'\*/}) do
+      Dashboard.first
+    end
+  end
+
   def test_sqlcommenter_format_value_string_coercible
-    ActiveRecord::QueryLogs.update_formatter(:sqlcommenter)
+    ActiveRecord::QueryLogs.tags_formatter = :sqlcommenter
 
     ActiveRecord::QueryLogs.tags = [
       :application,
@@ -247,7 +267,7 @@ class QueryLogsTest < ActiveRecord::TestCase
     def test_invalid_encoding_query
       ActiveRecord::QueryLogs.tags = [ :application ]
       assert_nothing_raised do
-        ActiveRecord::Base.connection.execute "select 1 as '\xFF'"
+        ActiveRecord::Base.lease_connection.execute "select 1 as '\xFF'"
       end
     end
   end

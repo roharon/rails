@@ -40,7 +40,7 @@ This file is as follows:
 
 ```ruby
 #!/usr/bin/env ruby
-APP_PATH = File.expand_path('../config/application', __dir__)
+APP_PATH = File.expand_path("../config/application", __dir__)
 require_relative "../config/boot"
 require "rails/commands"
 ```
@@ -52,9 +52,10 @@ The `APP_PATH` constant will be used later in `rails/commands`. The `config/boot
 `config/boot.rb` contains:
 
 ```ruby
-ENV['BUNDLE_GEMFILE'] ||= File.expand_path('../Gemfile', __dir__)
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
 
 require "bundler/setup" # Set up gems listed in the Gemfile.
+require "bootsnap/setup" # Speed up boot time by caching expensive operations.
 ```
 
 In a standard Rails application, there's a `Gemfile` which declares all
@@ -347,7 +348,6 @@ module Rack
 
       if options[:debug]
         $DEBUG = true
-        require "pp"
         p options[:server]
         pp wrapped_app
         pp app
@@ -575,7 +575,7 @@ defines `bootstrap`, `railtie`, and `finisher` initializers. The `bootstrap` ini
 prepare the application (like initializing the logger) while the `finisher`
 initializers (like building the middleware stack) are run last. The `railtie`
 initializers are the initializers which have been defined on the `Rails::Application`
-itself and are run between the `bootstrap` and `finishers`.
+itself and are run between the `bootstrap` and `finisher`.
 
 NOTE: Do not confuse Railtie initializers overall with the [load_config_initializers](configuring.html#using-initializer-files)
 initializer instance or its associated config initializers in `config/initializers`.

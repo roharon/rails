@@ -5,6 +5,26 @@ Ruby on Rails 7.1 Release Notes
 
 Highlights in Rails 7.1:
 
+* Generate Dockerfiles for new Rails applications
+* Add `ActiveRecord::Base.normalizes`
+* Add `ActiveRecord::Base.generates_token_for`
+* Add `perform_all_later` to enqueue multiple jobs at once
+* Composite primary keys
+* Introduce adapter for `Trilogy`
+* Add `ActiveSupport::MessagePack`
+* Introducing `config.autoload_lib` and `config.autoload_lib_once` for Enhanced Autoloading
+* Active Record API for general async queries
+* Allow templates to set strict `locals`
+* Add `Rails.application.deprecators`
+* Support pattern matching for JSON `response.parsed_body`
+* Extend `response.parsed_body` to parse HTML with Nokogiri
+* Introduce `ActionView::TestCase.register_parser`
+
+These release notes cover only the major changes. To learn about various bug
+fixes and changes, please refer to the changelogs or check out the [list of
+commits](https://github.com/rails/rails/commits/7-1-stable) in the main Rails
+repository on GitHub.
+
 --------------------------------------------------------------------------------
 
 Upgrading to Rails 7.1
@@ -193,7 +213,7 @@ development:
 Alternatively, integration can be achieved using the `DATABASE_URL` environment variable:
 
 ```ruby
-ENV['DATABASE_URL'] # => "trilogy://localhost/blog_development?pool=5"
+ENV["DATABASE_URL"] # => "trilogy://localhost/blog_development?pool=5"
 ```
 
 ### Add `ActiveSupport::MessagePack`
@@ -318,11 +338,22 @@ You can also set default values for these locals:
 <%= message %>
 ```
 
+Optional keyword arguments can be splatted:
+
+```erb
+<%# locals: (message: "Hello, world!", **attributes) -%>
+<%= tag.p(message, **attributes) %>
+```
+
 If you want to disable the use of locals entirely, you can do so like this:
 
 ```erb
 <%# locals: () %>
 ```
+
+Action View will process the `locals:` magic comment in any templating engine that supports `#`-prefixed comments, and will read the magic comment from any line in the partial.
+
+CAUTION: Only keyword arguments are supported. Defining positional or block arguments will raise an Action View Error at render-time.
 
 ### Add `Rails.application.deprecators`
 
@@ -582,7 +613,7 @@ Please refer to the [Changelog][action-view] for detailed changes.
 
 ### Notable changes
 
-*   `check_box_tag` and `radio_button_tag` now accept `checked` as a keyword argument.
+*   `checkbox_tag` and `radio_button_tag` now accept `checked` as a keyword argument.
 
 *   Add `picture_tag` helper to generate HTML `<picture>` tags.
 
@@ -697,6 +728,8 @@ Please refer to the [Changelog][active-record] for detailed changes.
 *   Add `ActiveRecord::Base#id_value` alias to access the raw value of a record's id column.
 
 *   Add validation option for `enum`.
+
+*   The default hash digest for `ActiveRecord::Encryption`, used for attributes defined with `encrypts`, is now `SHA256`, changed from `SHA1` in the default configuration. These defaults also include `support_sha1_for_non_deterministic_encryption = false` which can lead to apps being unable to decrypt data encrypted with the old default hash digest if data is not re-encrypted.
 
 Active Storage
 --------------

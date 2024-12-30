@@ -43,8 +43,8 @@ class ActiveSupport::TestCase
       ActiveStorage::Blob.create_and_upload! key: key, io: StringIO.new(data), filename: filename, content_type: content_type, identify: identify, service_name: service_name, record: record
     end
 
-    def create_file_blob(key: nil, filename: "racecar.jpg", content_type: "image/jpeg", metadata: nil, service_name: nil, record: nil)
-      ActiveStorage::Blob.create_and_upload! io: file_fixture(filename).open, filename: filename, content_type: content_type, metadata: metadata, service_name: service_name, record: record
+    def create_file_blob(key: nil, filename: "racecar.jpg", fixture: filename, content_type: "image/jpeg", identify: true, metadata: nil, service_name: nil, record: nil)
+      ActiveStorage::Blob.create_and_upload! io: file_fixture(fixture).open, filename: filename, content_type: content_type, identify: identify, metadata: metadata, service_name: service_name, record: record
     end
 
     def create_blob_before_direct_upload(key: nil, filename: "hello.txt", byte_size:, checksum:, content_type: "text/plain", record: nil)
@@ -114,12 +114,6 @@ class ActiveSupport::TestCase
       ActionController::Base.raise_on_open_redirects = old_raise_on_open_redirects
       ActiveStorage::Blob.service = old_service
     end
-
-    def subscribe_events_from(name)
-      events = []
-      ActiveSupport::Notifications.subscribe(name) { |event| events << event }
-      events
-    end
 end
 
 require "global_id"
@@ -127,6 +121,9 @@ GlobalID.app = "ActiveStorageExampleApp"
 ActiveRecord::Base.include GlobalID::Identification
 
 class User < ActiveRecord::Base
+  attr_accessor :record_callbacks, :callback_counter
+  attr_reader :notification_sent
+
   validates :name, presence: true
 
   has_one_attached :avatar
@@ -160,11 +157,31 @@ class User < ActiveRecord::Base
     attachable.variant :method, resize_to_limit: [3, 3],
       preprocessed: :should_preprocessed?
   end
+  has_one_attached :resume do |attachable|
+    attachable.variant :preview, resize_to_fill: [400, 400]
+  end
+  has_one_attached :resume_with_preprocessing do |attachable|
+    attachable.variant :preview, resize_to_fill: [400, 400], preprocessed: true
+  end
+
+  after_commit :increment_callback_counter
+  after_update_commit :notify
 
   accepts_nested_attributes_for :highlights_attachments, allow_destroy: true
 
   def should_preprocessed?
     name == "transform via method"
+  end
+
+  def increment_callback_counter
+    if record_callbacks
+      @callback_counter ||= 0
+      @callback_counter += 1
+    end
+  end
+
+  def notify
+    @notification_sent = true if highlights_attachments.any?(&:previously_new_record?)
   end
 end
 

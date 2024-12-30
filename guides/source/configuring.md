@@ -35,7 +35,7 @@ In general, the work of configuring Rails means configuring the components of Ra
 For example, you could add this setting to `config/application.rb` file:
 
 ```ruby
-config.time_zone = 'Central Time (US & Canada)'
+config.time_zone = "Central Time (US & Canada)"
 ```
 
 This is a setting for Rails itself. If you want to pass settings to individual Rails components, you can do so via the same `config` object in `config/application.rb`:
@@ -58,16 +58,31 @@ NOTE: If you need to apply configuration directly to a class, use a [lazy load h
 
 Below are the default values associated with each target version. In cases of conflicting values, newer versions take precedence over older versions.
 
+#### Default Values for Target Version 8.1
+
+- [`config.yjit`](#config-yjit): `!Rails.env.local?`
+
+#### Default Values for Target Version 8.0
+
+- [`Regexp.timeout`](#regexp-timeout): `1`
+- [`config.action_dispatch.strict_freshness`](#config-action-dispatch-strict-freshness): `true`
+- [`config.active_support.to_time_preserves_timezone`](#config-active-support-to-time-preserves-timezone): `:zone`
+
+#### Default Values for Target Version 7.2
+
+- [`config.active_record.postgresql_adapter_decode_dates`](#config-active-record-postgresql-adapter-decode-dates): `true`
+- [`config.active_record.validate_migration_timestamps`](#config-active-record-validate-migration-timestamps): `true`
+- [`config.active_storage.web_image_content_types`](#config-active-storage-web-image-content-types): `%w( image/png image/jpeg image/gif image/webp )`
+- [`config.yjit`](#config-yjit): `true`
+
 #### Default Values for Target Version 7.1
 
 - [`config.action_dispatch.debug_exception_log_level`](#config-action-dispatch-debug-exception-log-level): `:error`
 - [`config.action_dispatch.default_headers`](#config-action-dispatch-default-headers): `{ "X-Frame-Options" => "SAMEORIGIN", "X-XSS-Protection" => "0", "X-Content-Type-Options" => "nosniff", "X-Permitted-Cross-Domain-Policies" => "none", "Referrer-Policy" => "strict-origin-when-cross-origin" }`
 - [`config.action_text.sanitizer_vendor`](#config-action-text-sanitizer-vendor): `Rails::HTML::Sanitizer.best_supported_vendor`
 - [`config.action_view.sanitizer_vendor`](#config-action-view-sanitizer-vendor): `Rails::HTML::Sanitizer.best_supported_vendor`
-- [`config.active_record.allow_deprecated_singular_associations_name`](#config-active-record-allow-deprecated-singular-associations-name): `false`
 - [`config.active_record.before_committed_on_all_records`](#config-active-record-before-committed-on-all-records): `true`
 - [`config.active_record.belongs_to_required_validates_foreign_key`](#config-active-record-belongs-to-required-validates-foreign-key): `false`
-- [`config.active_record.commit_transaction_on_non_local_return`](#config-active-record-commit-transaction-on-non-local-return): `true`
 - [`config.active_record.default_column_serializer`](#config-active-record-default-column-serializer): `nil`
 - [`config.active_record.encryption.hash_digest_class`](#config-active-record-encryption-hash-digest-class): `OpenSSL::Digest::SHA256`
 - [`config.active_record.encryption.support_sha1_for_non_deterministic_encryption`](#config-active-record-encryption-support-sha1-for-non-deterministic-encryption): `false`
@@ -148,10 +163,10 @@ Below are the default values associated with each target version. In cases of co
 
 #### Default Values for Target Version 5.0
 
-- [`ActiveSupport.to_time_preserves_timezone`](#activesupport-to-time-preserves-timezone): `true`
 - [`config.action_controller.forgery_protection_origin_check`](#config-action-controller-forgery-protection-origin-check): `true`
 - [`config.action_controller.per_form_csrf_tokens`](#config-action-controller-per-form-csrf-tokens): `true`
 - [`config.active_record.belongs_to_required_by_default`](#config-active-record-belongs-to-required-by-default): `true`
+- [`config.active_support.to_time_preserves_timezone`](#config-active-support-to-time-preserves-timezone): `:offset`
 - [`config.ssl_options`](#config-ssl-options): `{ hsts: { subdomains: true } }`
 
 ### Rails General Configuration
@@ -177,7 +192,7 @@ Takes a block which will be run _after_ Rails has finished initializing the appl
 
 ```ruby
 config.after_initialize do
-  ActionView::Base.sanitized_allowed_tags.delete 'div'
+  ActionView::Base.sanitized_allowed_tags.delete "div"
 end
 ```
 
@@ -386,7 +401,21 @@ end
 
 #### `config.file_watcher`
 
-Is the class used to detect file updates in the file system when `config.reload_classes_only_on_change` is `true`. Rails ships with `ActiveSupport::FileUpdateChecker`, the default, and `ActiveSupport::EventedFileUpdateChecker` (this one depends on the [listen](https://github.com/guard/listen) gem). Custom classes must conform to the `ActiveSupport::FileUpdateChecker` API.
+Is the class used to detect file updates in the file system when `config.reload_classes_only_on_change` is `true`. Rails ships with `ActiveSupport::FileUpdateChecker`, the default, and `ActiveSupport::EventedFileUpdateChecker`. Custom classes must conform to the `ActiveSupport::FileUpdateChecker` API.
+
+Using `ActiveSupport::EventedFileUpdateChecker` depends on the [listen](https://github.com/guard/listen) gem:
+
+```ruby
+group :development do
+  gem "listen", "~> 3.5"
+end
+```
+
+On Linux and macOS no additional gems are needed, but some are required
+[for *BSD](https://github.com/guard/listen#on-bsd) and
+[for Windows](https://github.com/guard/listen#on-windows).
+
+Note that [some setups are unsupported](https://github.com/guard/listen#issues--limitations).
 
 #### `config.filter_parameters`
 
@@ -398,7 +427,7 @@ default, Rails filters out passwords by adding the following filters in
 
 ```ruby
 Rails.application.config.filter_parameters += [
-  :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn
+  :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc
 ]
 ```
 
@@ -409,7 +438,7 @@ Parameters filter works by partial matching regular expression.
 Used for filtering out redirect urls from application logs.
 
 ```ruby
-Rails.application.config.filter_redirect += ['s3.amazonaws.com', /private-match/]
+Rails.application.config.filter_redirect += ["s3.amazonaws.com", /private-match/]
 ```
 
 The redirect filter works by testing that urls include strings or match regular
@@ -513,14 +542,6 @@ config.railties_order = [Blog::Engine, :main_app, :all]
 
 When `true`, eager load the application when running Rake tasks. Defaults to `false`.
 
-#### `config.read_encrypted_secrets`
-
-*DEPRECATED*: You should be using
-[credentials](https://guides.rubyonrails.org/security.html#custom-credentials)
-instead of encrypted secrets.
-
-When `true`, will try to read encrypted secrets from `config/secrets.yml.enc`
-
 #### `config.relative_url_root`
 
 Can be used to tell Rails that you are [deploying to a subdirectory](
@@ -582,6 +603,14 @@ config.session_store :my_custom_store
 
 The default store is a cookie store with the application name as the session key.
 
+#### `config.silence_healthcheck_path`
+
+Specifies the path of the health check that should be silenced in the logs. Uses `Rails::Rack::SilenceRequest` to implement the silencing. All in service of keeping health checks from clogging the production logs, especially for early-stage applications.
+
+```
+config.silence_healthcheck_path = "/up"
+```
+
 #### `config.ssl_options`
 
 Configuration options for the [`ActionDispatch::SSL`](https://api.rubyonrails.org/classes/ActionDispatch/SSL.html) middleware.
@@ -607,6 +636,17 @@ Used to easily add nested custom configuration to the application config object
   ```
 
 See [Custom Configuration](#custom-configuration)
+
+#### `config.yjit`
+
+Enables YJIT as of Ruby 3.3, to bring sizeable performance improvements. If you are
+deploying to a memory constrained environment you may want to set this to `false`.
+
+| Starting with version | The default value is |
+| --------------------- | -------------------- |
+| (original)            | `false`              |
+| 7.2                   | `true`               |
+| 8.1                   | `!Rails.env.local?`  |
 
 ### Configuring Assets
 
@@ -671,7 +711,7 @@ Accepts a logger conforming to the interface of Log4r or the default Ruby `Logge
 
 #### `config.assets.quiet`
 
-Disables logging of assets requests. Set to `true` by default in `development.rb`.
+Disables logging of assets requests. Set to `true` by default in `config/environments/development.rb`.
 
 ### Configuring Generators
 
@@ -754,7 +794,7 @@ You can exclude certain requests from Host Authorization checks by setting
 ```ruby
 # Exclude requests for the /healthcheck/ path from host checking
 Rails.application.config.host_authorization = {
-  exclude: ->(request) { request.path.include?('healthcheck') }
+  exclude: ->(request) { request.path.include?("healthcheck") }
 }
 ```
 
@@ -916,7 +956,7 @@ Sets the path Rails uses to look for locale files. Defaults to `config/locales/*
 
 #### `config.i18n.raise_on_missing_translations`
 
-Determines whether an error should be raised for missing translations. This defaults to `false`.
+Determines whether an error should be raised for missing translations. If `true`, views and controllers raise `I18n::MissingTranslationData`. If `:strict`, models also raise the error. This defaults to `false`.
 
 #### `config.i18n.fallbacks`
 
@@ -1048,6 +1088,66 @@ Specifies if an error should be raised if the order of a query is ignored during
 
 Controls whether migrations are numbered with serial integers or with timestamps. The default is `true`, to use timestamps, which are preferred if there are multiple developers working on the same application.
 
+#### `config.active_record.automatically_invert_plural_associations`
+
+Controls whether Active Record will automatically look for inverse relations with a pluralized name.
+
+Example:
+
+```ruby
+class Post < ApplicationRecord
+  has_many :comments
+end
+
+class Comment < ApplicationRecord
+  belongs_to :post
+end
+```
+
+In the above case Active Record used to only look for a `:comment` (singular) association in `Post`, and won't find it.
+
+With this option enabled, it will also look for a `:comments` association. In the vast majority of cases
+having the inverse association discovered is beneficial as it can prevent some useless queries, but
+it may cause backward compatibility issues with legacy code that doesn't expect it.
+
+This behavior can be disabled on a per-model basis:
+
+```ruby
+class Comment < ApplicationRecord
+  self.automatically_invert_plural_associations = false
+
+  belongs_to :post
+end
+```
+
+And on a per-association basis:
+
+```ruby
+class Comment < ApplicationRecord
+  self.automatically_invert_plural_associations = true
+
+  belongs_to :post, inverse_of: nil
+end
+```
+
+| Starting with version | The default value is |
+| --------------------- | -------------------- |
+| (original)            | `false`              |
+
+#### `config.active_record.validate_migration_timestamps`
+
+Controls whether to validate migration timestamps. When set, an error will be raised if the
+timestamp prefix for a migration is more than a day ahead of the timestamp associated with the
+current time. This is done to prevent forward-dating of migration files, which can impact migration
+generation and other migration commands. `config.active_record.timestamped_migrations` must be set to `true`.
+
+The default value depends on the `config.load_defaults` target version:
+
+| Starting with version | The default value is |
+| --------------------- | -------------------- |
+| (original)            | `false`              |
+| 7.2                   | `true`               |
+
 #### `config.active_record.db_warnings_action`
 
 Controls the action to be taken when an SQL query produces a warning. The following options are available:
@@ -1103,6 +1203,31 @@ class CustomMigrationStrategy < ActiveRecord::Migration::DefaultStrategy
 end
 
 config.active_record.migration_strategy = CustomMigrationStrategy
+```
+
+#### `config.active_record.schema_versions_formatter`
+
+Controls the formatter class used by schema dumper to format versions information. Custom class can be provided
+to change the default behavior:
+
+```ruby
+class CustomSchemaVersionsFormatter
+  def initialize(connection)
+    @connection = connection
+  end
+
+  def format(versions)
+    # Special sorting of versions to reduce the likelihood of conflicts.
+    sorted_versions = versions.sort { |a, b| b.to_s.reverse <=> a.to_s.reverse }
+
+    sql = +"INSERT INTO schema_migrations (version) VALUES\n"
+    sql << sorted_versions.map { |v| "(#{@connection.quote(v)})" }.join(",\n")
+    sql << ";"
+    sql
+  end
+end
+
+config.active_record.schema_versions_formatter = CustomSchemaVersionsFormatter
 ```
 
 #### `config.active_record.lock_optimistically`
@@ -1209,11 +1334,11 @@ changed to `:log` to send violations to the logger instead of raising.
 Is a boolean value that either enables or disables strict_loading mode by
 default. Defaults to `false`.
 
-#### `config.active_record.warn_on_records_fetched_greater_than`
+#### `config.active_record.strict_loading_mode`
 
-Allows setting a warning threshold for query result size. If the number of
-records returned by a query exceeds the threshold, a warning is logged. This
-can be used to identify queries which might be causing a memory bloat.
+Sets the mode in which strict loading is reported. Defaults to `:all`. It can be
+changed to `:n_plus_one_only` to only report when loading associations that will
+lead to an N + 1 query.
 
 #### `config.active_record.index_nested_attribute_errors`
 
@@ -1285,7 +1410,9 @@ Allows specifying the maximum number of records that will be destroyed in a back
 
 #### `config.active_record.queues.destroy`
 
-Allows specifying the Active Job queue to use for destroy jobs. When this option is `nil`, purge jobs are sent to the default Active Job queue (see `config.active_job.default_queue_name`). It defaults to `nil`.
+Allows specifying the Active Job queue to use for destroy jobs. When this option
+is `nil`, purge jobs are sent to the default Active Job queue (see
+[`config.active_job.default_queue_name`][]). It defaults to `nil`.
 
 #### `config.active_record.enumerate_columns_in_select_statements`
 
@@ -1301,39 +1428,6 @@ The default value depends on the `config.load_defaults` target version:
 | --------------------- | -------------------- |
 | (original)            | `false`              |
 | 7.0                   | `true`               |
-
-#### `config.active_record.commit_transaction_on_non_local_return`
-
-Defines whether `return`, `break` and `throw` inside a `transaction` block cause the transaction to be
-committed or rolled back. e.g.:
-
-```ruby
-Model.transaction do
-  model.save
-  return
-  other_model.save # not executed
-end
-```
-
-If set to `false`, it will be rolled back.
-
-If set to `true`, the above transaction will be committed.
-
-| Starting with version | The default value is |
-| --------------------- | -------------------- |
-| (original)            | `false`              |
-| 7.1                   | `true`               |
-
-Historically only raised errors would trigger a rollback, but in Ruby `2.3`, the `timeout` library
-started using `throw` to interrupt execution which had the adverse effect of committing open transactions.
-
-To solve this, in Active Record 6.1 the behavior was changed to instead rollback the transaction as it was safer
-than to potentially commit an incomplete transaction.
-
-Using `return`, `break` or `throw` inside a `transaction` block was essentially deprecated from Rails 6.1 onwards.
-
-However with the release of `timeout 0.4.0`, `Timeout.timeout` now raises an error again, and Active Record is able
-to return to its original, less surprising, behavior.
 
 #### `config.active_record.raise_on_assign_to_attr_readonly`
 
@@ -1405,15 +1499,15 @@ The default value depends on the `config.load_defaults` target version:
 #### `config.active_record.query_log_tags_enabled`
 
 Specifies whether or not to enable adapter-level query comments. Defaults to
-`false`.
+`false`, but is set to `true` in the default generated `config/environments/development.rb` file.
 
 NOTE: When this is set to `true` database prepared statements will be automatically disabled.
 
 #### `config.active_record.query_log_tags`
 
-Define an `Array` specifying the key/value tags to be inserted in an SQL
-comment. Defaults to `[ :application ]`, a predefined tag returning the
-application name.
+Define an `Array` specifying the key/value tags to be inserted in an SQL comment. Defaults to
+`[ :application, :controller, :action, :job ]`. The available tags are: `:application`, `:controller`,
+`:namespaced_controller`, `:action`, `:job`, and `:source_location`.
 
 #### `config.active_record.query_log_tags_format`
 
@@ -1461,6 +1555,24 @@ The default value depends on the `config.load_defaults` target version:
 | (original)            | `false`              |
 | 7.1                   | `true`               |
 
+#### `config.active_record.postgresql_adapter_decode_dates`
+
+Specifies whether the PostgresqlAdapter should decode date columns.
+
+```ruby
+ActiveRecord::Base.connection
+     .select_value("select '2024-01-01'::date").class #=> Date
+```
+
+
+The default value depends on the `config.load_defaults` target version:
+
+| Starting with version | The default value is |
+| --------------------- | -------------------- |
+| (original)            | `false`              |
+| 7.2                   | `true`               |
+
+
 #### `config.active_record.async_query_executor`
 
 Specifies how asynchronous queries are pooled.
@@ -1487,31 +1599,6 @@ should be large enough to accommodate both the foreground threads (ie. web serve
 For each process, Rails will create one global query executor that uses this many threads to process async queries. Thus, the pool size
 should be at least `thread_count + global_executor_concurrency + 1`. For example, if your web server has a maximum of 3 threads,
 and `global_executor_concurrency` is set to 4, then your pool size should be at least 8.
-
-#### `config.active_record.allow_deprecated_singular_associations_name`
-
-This enables deprecated behavior wherein singular associations can be referred to by their plural name in `where` clauses. Setting this to `false` is more performant.
-
-```ruby
-class Comment < ActiveRecord::Base
-  belongs_to :post
-end
-
-Comment.where(post: post_id).count  # => 5
-
-# When `allow_deprecated_singular_associations_name` is true:
-Comment.where(posts: post_id).count # => 5 (deprecation warning)
-
-# When `allow_deprecated_singular_associations_name` is false:
-Comment.where(posts: post_id).count # => error
-```
-
-The default value depends on the `config.load_defaults` target version:
-
-| Starting with version | The default value is |
-| --------------------- | -------------------- |
-| (original)            | `true`               |
-| 7.1                   | `false`              |
 
 #### `config.active_record.yaml_column_permitted_classes`
 
@@ -1564,6 +1651,38 @@ record.token # => "fwZcXX6SkJBJRogzMdciS7wf"
 | --------------------- | -------------------- |
 | (original)            | `:create`            |
 | 7.1                   | `:initialize`        |
+
+
+#### `config.active_record.permanent_connection_checkout`
+
+Controls whether `ActiveRecord::Base.connection` raises an error, emits a deprecation warning, or neither.
+
+`ActiveRecord::Base.connection` checkouts a database connection from the pool and keeps it leased until the end of
+the request or job. This behavior can be undesirable in environments that use many more threads or fibers than there
+is available connections.
+
+This configuration can be used to track down and eliminate code that calls `ActiveRecord::Base.connection` and
+migrate it to use `ActiveRecord::Base.with_connection` instead.
+
+The value can be set to `:disallowed`, `:deprecated`, or `true` to respectively raise an error, emit a deprecation
+warning, or neither.
+
+| Starting with version | The default value is |
+| --------------------- | -------------------- |
+| (original)            | `true`               |
+
+#### `config.active_record.database_cli`
+
+Controls which CLI tool will be used for accessing the database when running `rails dbconsole`. By default
+the standard tool for the database will be used (e.g. `psql` for PostgreSQL and `mysql` for MySQL). The option
+takes a hash which specifies the tool per-database system, and an array can be used where fallback options are
+required:
+
+```ruby
+# config/application.rb
+
+config.active_record.database_cli = { postgresql: "pgcli", mysql: %w[ mycli mysql ] }
+```
 
 #### `ActiveRecord::ConnectionAdapters::Mysql2Adapter.emulate_booleans` and `ActiveRecord::ConnectionAdapters::TrilogyAdapter.emulate_booleans`
 
@@ -1645,6 +1764,12 @@ The default value depends on the `config.load_defaults` target version:
 | (original)            | `true`               |
 | 7.1                   | `false`              |
 
+#### `config.active_record.encryption.compressor`
+
+Sets the compressor used by Active Record Encryption. The default value is `Zlib`.
+
+You can use your own compressor by setting this to a class that responds to `deflate` and `inflate`.
+
 #### `config.active_record.protocol_adapters`
 
 When using a URL to configure the database connection, this option provides a mapping from the protocol to the underlying
@@ -1667,7 +1792,7 @@ Sets the host for the assets. Useful when CDNs are used for hosting assets rathe
 
 #### `config.action_controller.perform_caching`
 
-Configures whether the application should perform the caching features provided by the Action Controller component or not. Set to `false` in the development environment, `true` in production. If it's not specified, the default will be `true`.
+Configures whether the application should perform the caching features provided by the Action Controller component. Set to `false` in the development environment, `true` in production. If it's not specified, the default will be `true`.
 
 #### `config.action_controller.default_static_extension`
 
@@ -1956,32 +2081,32 @@ Configures what exceptions are assigned to an HTTP status. It accepts a hash and
 
 ```ruby
 # It's good to use #[]= or #merge! to respect the default values
-config.action_dispatch.rescue_responses['MyAuthenticationError'] = :unauthorized
+config.action_dispatch.rescue_responses["MyAuthenticationError"] = :unauthorized
 ```
 
 Use `ActionDispatch::ExceptionWrapper.rescue_responses` to observe the configuration. By default, it is defined as:
 
 ```ruby
 {
-  'ActionController::RoutingError' => :not_found,
-  'AbstractController::ActionNotFound' => :not_found,
-  'ActionController::MethodNotAllowed' => :method_not_allowed,
-  'ActionController::UnknownHttpMethod' => :method_not_allowed,
-  'ActionController::NotImplemented' => :not_implemented,
-  'ActionController::UnknownFormat' => :not_acceptable,
-  'ActionDispatch::Http::MimeNegotiation::InvalidType' => :not_acceptable,
-  'ActionController::MissingExactTemplate' => :not_acceptable,
-  'ActionController::InvalidAuthenticityToken' => :unprocessable_entity,
-  'ActionController::InvalidCrossOriginRequest' => :unprocessable_entity,
-  'ActionDispatch::Http::Parameters::ParseError' => :bad_request,
-  'ActionController::BadRequest' => :bad_request,
-  'ActionController::ParameterMissing' => :bad_request,
-  'Rack::QueryParser::ParameterTypeError' => :bad_request,
-  'Rack::QueryParser::InvalidParameterError' => :bad_request,
-  'ActiveRecord::RecordNotFound' => :not_found,
-  'ActiveRecord::StaleObjectError' => :conflict,
-  'ActiveRecord::RecordInvalid' => :unprocessable_entity,
-  'ActiveRecord::RecordNotSaved' => :unprocessable_entity
+  "ActionController::RoutingError" => :not_found,
+  "AbstractController::ActionNotFound" => :not_found,
+  "ActionController::MethodNotAllowed" => :method_not_allowed,
+  "ActionController::UnknownHttpMethod" => :method_not_allowed,
+  "ActionController::NotImplemented" => :not_implemented,
+  "ActionController::UnknownFormat" => :not_acceptable,
+  "ActionDispatch::Http::MimeNegotiation::InvalidType" => :not_acceptable,
+  "ActionController::MissingExactTemplate" => :not_acceptable,
+  "ActionController::InvalidAuthenticityToken" => :unprocessable_entity,
+  "ActionController::InvalidCrossOriginRequest" => :unprocessable_entity,
+  "ActionDispatch::Http::Parameters::ParseError" => :bad_request,
+  "ActionController::BadRequest" => :bad_request,
+  "ActionController::ParameterMissing" => :bad_request,
+  "Rack::QueryParser::ParameterTypeError" => :bad_request,
+  "Rack::QueryParser::InvalidParameterError" => :bad_request,
+  "ActiveRecord::RecordNotFound" => :not_found,
+  "ActiveRecord::StaleObjectError" => :conflict,
+  "ActiveRecord::RecordInvalid" => :unprocessable_entity,
+  "ActiveRecord::RecordNotSaved" => :unprocessable_entity
 }
 ```
 
@@ -2028,20 +2153,41 @@ defaults to `true`.
 
 The `config.action_dispatch.show_exceptions` configuration controls how Action Pack (specifically the [`ActionDispatch::ShowExceptions`](/configuring.html#actiondispatch-showexceptions) middleware) handles exceptions raised while responding to requests.
 
-Setting the value to `:all` or `true` configures Action Pack to rescue from exceptions and render corresponding error pages. For example, Action Pack would rescue from an `ActiveRecord::RecordNotFound` exception and render the contents of `public/404.html` with a `404 Not found` status code.
+Setting the value to `:all` configures Action Pack to rescue from exceptions and render corresponding error pages. For example, Action Pack would rescue from an `ActiveRecord::RecordNotFound` exception and render the contents of `public/404.html` with a `404 Not found` status code.
 
-Setting the value to `:rescueable` configures Action Pack rescue from exceptions defined in [`config.action_dispatch.rescue_responses`](/configuring.html#config-action-dispatch-rescue-responses), and raise all others. For example, Action Pack would rescue from `ActiveRecord::RecordNotFound`, but would raise a `NoMethodError`.
+Setting the value to `:rescuable` configures Action Pack to rescue from exceptions defined in [`config.action_dispatch.rescue_responses`](/configuring.html#config-action-dispatch-rescue-responses), and raise all others. For example, Action Pack would rescue from `ActiveRecord::RecordNotFound`, but would raise a `NoMethodError`.
 
-Setting the value to `:none` or `false` configures Action Pack raise all exceptions.
+Setting the value to `:none` configures Action Pack to raise all exceptions.
 
-* `:all`, `true` - render error pages for all exceptions
+* `:all` - render error pages for all exceptions
 * `:rescuable` - render error pages for exceptions declared by [`config.action_dispatch.rescue_responses`](/configuring.html#config-action-dispatch-rescue-responses)
-* `:none`, `false` - raise all exceptions
+* `:none` - raise all exceptions
 
 | Starting with version | The default value is  |
 | --------------------- | --------------------- |
 | (original)            | `true`                |
 | 7.1                   | `:all`                |
+
+#### `config.action_dispatch.strict_freshness`
+
+Configures whether the `ActionDispatch::ETag` middleware should prefer the `ETag` header over the `Last-Modified` header when both are present in the response.
+
+If set to `true`, when both headers are present only the `ETag` is considered as specified by RFC 7232 section 6.
+
+If set to `false`, when both headers are present, both headers are checked and both need to match for the response to be considered fresh.
+
+| Starting with version | The default value is  |
+| --------------------- | --------------------- |
+| (original)            | `false`               |
+| 8.0                   | `true`                |
+
+#### `config.action_dispatch.always_write_cookie`
+
+Cookies will be written at the end of a request if they marked as insecure, if the request is made over SSL, or if the request is made to an onion service.
+
+If set to `true`, cookies will be written even if this criteria is not met.
+
+This defaults to `true` in `development`, and `false` in all other environments.
 
 #### `ActionDispatch::Callbacks.before`
 
@@ -2163,7 +2309,7 @@ Determines whether to annotate rendered view with template file names. This defa
 
 #### `config.action_view.preload_links_header`
 
-Determines whether `javascript_include_tag` and `stylesheet_link_tag` will generate a `Link` header that preload assets.
+Determines whether `javascript_include_tag` and `stylesheet_link_tag` will generate a `link` header that preload assets.
 
 The default value depends on the `config.load_defaults` target version:
 
@@ -2247,7 +2393,9 @@ config.action_mailbox.incinerate_after = 14.days
 
 #### `config.action_mailbox.queues.incineration`
 
-Accepts a symbol indicating the Active Job queue to use for incineration jobs. When this option is `nil`, incineration jobs are sent to the default Active Job queue (see `config.active_job.default_queue_name`).
+Accepts a symbol indicating the Active Job queue to use for incineration jobs.
+When this option is `nil`, incineration jobs are sent to the default Active Job
+queue (see [`config.active_job.default_queue_name`][]).
 
 The default value depends on the `config.load_defaults` target version:
 
@@ -2258,7 +2406,9 @@ The default value depends on the `config.load_defaults` target version:
 
 #### `config.action_mailbox.queues.routing`
 
-Accepts a symbol indicating the Active Job queue to use for routing jobs. When this option is `nil`, routing jobs are sent to the default Active Job queue (see `config.active_job.default_queue_name`).
+Accepts a symbol indicating the Active Job queue to use for routing jobs. When
+this option is `nil`, routing jobs are sent to the default Active Job queue (see
+[`config.active_job.default_queue_name`][]).
 
 The default value depends on the `config.load_defaults` target version:
 
@@ -2409,7 +2559,10 @@ Specifies whether the mailer templates should perform fragment caching or not. I
 
 #### `config.action_mailer.deliver_later_queue_name`
 
-Specifies the Active Job queue to use for the default delivery job (see `config.action_mailer.delivery_job`). When this option is set to `nil`, delivery jobs are sent to the default Active Job queue (see `config.active_job.default_queue_name`).
+Specifies the Active Job queue to use for the default delivery job (see
+`config.action_mailer.delivery_job`). When this option is set to `nil`, delivery
+jobs are sent to the default Active Job queue (see
+[`config.active_job.default_queue_name`][]).
 
 Mailer classes can override this to use a different queue. Note that this only applies when using the default delivery job. If your mailer is using a custom job, its queue will be used.
 
@@ -2555,7 +2708,7 @@ The default value depends on the `config.load_defaults` target version:
 #### `config.active_support.cache_format_version`
 
 Specifies which serialization format to use for the cache. Possible values are
-`6.1`, `7.0`, and `7.1`.
+`7.0`, and `7.1`.
 
 `7.0` serializes cache entries more efficiently.
 
@@ -2571,7 +2724,6 @@ The default value depends on the `config.load_defaults` target version:
 
 | Starting with version | The default value is |
 | --------------------- | -------------------- |
-| (original)            | `6.1`                |
 | 7.0                   | `7.0`                |
 | 7.1                   | `7.1`                |
 
@@ -2593,8 +2745,7 @@ Configures the behavior of disallowed deprecation warnings. See
 [`Deprecation::Behavior`][deprecation_behavior] for a description of the
 available options.
 
-In the default generated `config/environments` files, this is set to `:raise`
-for both development and test, and it is omitted for production in favor of
+This option is intended for development and test. For production, favor
 [`config.active_support.report_deprecations`](#config-active-support-report-deprecations).
 
 #### `config.active_support.disallowed_deprecation_warnings`
@@ -2625,6 +2776,18 @@ The default value depends on the `config.load_defaults` target version:
 | (original)            | `false`              |
 | 7.0                   | `true`               |
 
+#### `config.active_support.to_time_preserves_timezone`
+
+Specifies whether `to_time` methods preserve the UTC offset of their receivers or preserves the timezone. If set to `:zone`, `to_time` methods will use the timezone of their receivers. If set to `:offset`, `to_time` methods will use the UTC offset. If `false`, `to_time` methods will convert to the local system UTC offset instead.
+
+The default value depends on the `config.load_defaults` target version:
+
+| Starting with version | The default value is |
+| --------------------- | -------------------- |
+| (original)            | `false`              |
+| 5.0                   | `:offset`            |
+| 8.0                   | `:zone`              |
+
 #### `ActiveSupport::Logger.silencer`
 
 Is set to `false` to disable the ability to silence logging in a block. The default is `true`.
@@ -2633,20 +2796,9 @@ Is set to `false` to disable the ability to silence logging in a block. The defa
 
 Specifies the logger to use within cache store operations.
 
-#### `ActiveSupport.to_time_preserves_timezone`
-
-Specifies whether `to_time` methods preserve the UTC offset of their receivers. If `false`, `to_time` methods will convert to the local system UTC offset instead.
-
-The default value depends on the `config.load_defaults` target version:
-
-| Starting with version | The default value is |
-| --------------------- | -------------------- |
-| (original)            | `false`              |
-| 5.0                   | `true`               |
-
 #### `ActiveSupport.utc_to_local_returns_utc_offset_times`
 
-Configures `ActiveSupport::TimeZone.utc_to_local` to return a time with a UTC
+Configures [`ActiveSupport::TimeZone.utc_to_local`][] to return a time with a UTC
 offset instead of a UTC time incorporating that offset.
 
 The default value depends on the `config.load_defaults` target version:
@@ -2656,12 +2808,15 @@ The default value depends on the `config.load_defaults` target version:
 | (original)            | `false`              |
 | 6.1                   | `true`               |
 
+[`ActiveSupport::TimeZone.utc_to_local`]: https://api.rubyonrails.org/classes/ActiveSupport/TimeZone.html#method-i-utc_to_local
+
 #### `config.active_support.raise_on_invalid_cache_expiration_time`
 
-Specifies if an `ArgumentError` should be raised if `Rails.cache` `fetch` or
-`write` are given an invalid `expires_at` or `expires_in` time.
+Specifies whether an `ArgumentError` should be raised if `Rails.cache`
+[`fetch`][ActiveSupport::Cache::Store#fetch] or [`write`][ActiveSupport::Cache::Store#write]
+are given an invalid `expires_at` or `expires_in` time.
 
-Options are `true`, and `false`. If `false`, the exception will be reported
+Options are `true` and `false`. If `false`, the exception will be reported
 as `handled` and logged instead.
 
 The default value depends on the `config.load_defaults` target version:
@@ -2670,6 +2825,9 @@ The default value depends on the `config.load_defaults` target version:
 | --------------------- | -------------------- |
 | (original)            | `false`              |
 | 7.1                   | `true`               |
+
+[ActiveSupport::Cache::Store#fetch]: https://api.rubyonrails.org/classes/ActiveSupport/Cache/Store.html#method-i-fetch
+[ActiveSupport::Cache::Store#write]: https://api.rubyonrails.org/classes/ActiveSupport/Cache/Store.html#method-i-write
 
 ### Configuring Active Job
 
@@ -2693,6 +2851,8 @@ Can be used to change the default queue name. By default this is `"default"`.
 ```ruby
 config.active_job.default_queue_name = :medium_priority
 ```
+
+[`config.active_job.default_queue_name`]: #config-active-job-default-queue-name
 
 #### `config.active_job.queue_name_prefix`
 
@@ -2719,8 +2879,8 @@ The following configuration would queue the provided job on the `video_server.lo
 
 ```ruby
 # prefix must be set for delimiter to be used
-config.active_job.queue_name_prefix = 'video_server'
-config.active_job.queue_name_delimiter = '.'
+config.active_job.queue_name_prefix = "video_server"
+config.active_job.queue_name_delimiter = "."
 ```
 
 ```ruby
@@ -2784,6 +2944,19 @@ You can find more detailed configuration options in the
 Determines whether the Action Cable assets should be added to the asset pipeline precompilation. It
 has no effect if Sprockets is not used. The default value is `true`.
 
+#### `config.action_cable.allow_same_origin_as_host`
+
+Determines whether an origin matching the cable server itself will be permitted.
+The default value is `true`.
+
+Set to false to disable automatic access for same-origin requests, and strictly allow
+only the configured origins.
+
+#### `config.action_cable.allowed_request_origins`
+
+Determines the request origins which will be accepted but the cable server.
+The default value is `/https?:\/\/localhost:\d+/` in the `development` environment.
+
 ### Configuring Active Storage
 
 `config.active_storage` provides the following configuration options:
@@ -2830,7 +3003,7 @@ Accepts a hash of options indicating the locations of previewer/analyzer command
 * `:ffmpeg` - The location of the ffmpeg executable.
 
 ```ruby
-config.active_storage.paths[:ffprobe] = '/usr/local/bin/ffprobe'
+config.active_storage.paths[:ffprobe] = "/usr/local/bin/ffprobe"
 ```
 
 #### `config.active_storage.variable_content_types`
@@ -2847,13 +3020,15 @@ config.active_storage.variable_content_types = %w(image/png image/gif image/jpeg
 
 Accepts an array of strings regarded as web image content types in which
 variants can be processed without being converted to the fallback PNG format.
-If you want to use `WebP` or `AVIF` variants in your application you can add
-`image/webp` or `image/avif` to this array.
-By default, this is defined as:
+For example, if you want to use `AVIF` variants in your application you can add
+`image/avif` to this array.
 
-```ruby
-config.active_storage.web_image_content_types = %w(image/png image/jpeg image/gif)
-```
+The default value depends on the `config.load_defaults` target version:
+
+| Starting with version | The default value is                            |
+| --------------------- | ----------------------------------------------- |
+| (original)            | `%w(image/png image/jpeg image/gif)`            |
+| 7.2                   | `%w(image/png image/jpeg image/gif image/webp)` |
 
 #### `config.active_storage.content_types_to_serve_as_binary`
 
@@ -2870,12 +3045,14 @@ Accepts an array of strings indicating the content types that Active Storage all
 By default, this is defined as:
 
 ```ruby
-config.active_storage.content_types_allowed_inline = %w(image/png image/gif image/jpeg image/tiff image/vnd.adobe.photoshop image/vnd.microsoft.icon application/pdf)
+config.active_storage.content_types_allowed_inline = %w(image/webp image/avif image/png image/gif image/jpeg image/tiff image/vnd.adobe.photoshop image/vnd.microsoft.icon application/pdf)
 ```
 
 #### `config.active_storage.queues.analysis`
 
-Accepts a symbol indicating the Active Job queue to use for analysis jobs. When this option is `nil`, analysis jobs are sent to the default Active Job queue (see `config.active_job.default_queue_name`).
+Accepts a symbol indicating the Active Job queue to use for analysis jobs. When
+this option is `nil`, analysis jobs are sent to the default Active Job queue
+(see [`config.active_job.default_queue_name`][]).
 
 The default value depends on the `config.load_defaults` target version:
 
@@ -2884,9 +3061,25 @@ The default value depends on the `config.load_defaults` target version:
 | 6.0                   | `:active_storage_analysis` |
 | 6.1                   | `nil`                |
 
+#### `config.active_storage.queues.mirror`
+
+Accepts a symbol indicating the Active Job queue to use for direct upload
+mirroring jobs. When this option is `nil`, mirroring jobs are sent to the
+default Active Job queue (see [`config.active_job.default_queue_name`][]). The
+default is `nil`.
+
+#### `config.active_storage.queues.preview_image`
+
+Accepts a symbol indicating the Active Job queue to use for preprocessing
+previews of images. When this option is `nil`, jobs are sent to the default
+Active Job queue (see [`config.active_job.default_queue_name`][]). The default
+is `nil`.
+
 #### `config.active_storage.queues.purge`
 
-Accepts a symbol indicating the Active Job queue to use for purge jobs. When this option is `nil`, purge jobs are sent to the default Active Job queue (see `config.active_job.default_queue_name`).
+Accepts a symbol indicating the Active Job queue to use for purge jobs. When
+this option is `nil`, purge jobs are sent to the default Active Job queue (see
+[`config.active_job.default_queue_name`][]).
 
 The default value depends on the `config.load_defaults` target version:
 
@@ -2895,9 +3088,11 @@ The default value depends on the `config.load_defaults` target version:
 | 6.0                   | `:active_storage_purge` |
 | 6.1                   | `nil`                |
 
-#### `config.active_storage.queues.mirror`
+#### `config.active_storage.queues.transform`
 
-Accepts a symbol indicating the Active Job queue to use for direct upload mirroring jobs. When this option is `nil`, mirroring jobs are sent to the default Active Job queue (see `config.active_job.default_queue_name`). The default is `nil`.
+Accepts a symbol indicating the Active Job queue to use for preprocessing
+variants. When this option is `nil`, jobs are sent to the default Active Job
+queue (see [`config.active_job.default_queue_name`][]). The default is `nil`.
 
 #### `config.active_storage.logger`
 
@@ -2936,7 +3131,7 @@ Directs ActiveStorage::Attachments to touch its corresponding record when update
 Can be used to set the route prefix for the routes served by Active Storage. Accepts a string that will be prepended to the generated routes.
 
 ```ruby
-config.active_storage.routes_prefix = '/files'
+config.active_storage.routes_prefix = "/files"
 ```
 
 The default is `/rails/active_storage`.
@@ -2985,7 +3180,7 @@ default to _replacing_ the current collection instead of _appending_ to it. Thus
 to support submitting an _empty_ collection, when `multiple_file_field_include_hidden`
 is `true`, the [`file_field`](https://api.rubyonrails.org/classes/ActionView/Helpers/FormBuilder.html#method-i-file_field)
 helper will render an auxiliary hidden field, similar to the auxiliary field
-rendered by the [`check_box`](https://api.rubyonrails.org/classes/ActionView/Helpers/FormBuilder.html#method-i-check_box)
+rendered by the [`checkbox`](https://api.rubyonrails.org/classes/ActionView/Helpers/FormBuilder.html#method-i-checkbox)
 helper.
 
 The default value depends on the `config.load_defaults` target version:
@@ -3017,6 +3212,11 @@ Configures the HTML sanitizer used by Action Text by setting `ActionText::Conten
 
 NOTE: `Rails::HTML5::Sanitizer` is not supported on JRuby, so on JRuby platforms Rails will fall back to `Rails::HTML4::Sanitizer`.
 
+#### `Regexp.timeout`
+
+
+See Ruby's documentation for [`Regexp.timeout=`](https://docs.ruby-lang.org/en/master/Regexp.html#method-c-timeout-3D).
+
 ### Configuring a Database
 
 Just about every Rails application will interact with a database. You can connect to the database by setting an environment variable `ENV['DATABASE_URL']` or by using a configuration file called `config/database.yml`.
@@ -3033,7 +3233,7 @@ development:
 This will connect to the database named `blog_development` using the `postgresql` adapter. This same information can be stored in a URL and provided via an environment variable like this:
 
 ```ruby
-ENV['DATABASE_URL'] # => "postgresql://localhost/blog_development?pool=5"
+ENV["DATABASE_URL"] # => "postgresql://localhost/blog_development?pool=5"
 ```
 
 The `config/database.yml` file contains sections for three different environments in which Rails can run by default:
@@ -3098,9 +3298,6 @@ development:
 $ echo $DATABASE_URL
 postgresql://localhost/my_database
 
-$ bin/rails runner 'puts ActiveRecord::Base.configurations'
-#<ActiveRecord::DatabaseConfigurations:0x00007fd50e209a28>
-
 $ bin/rails runner 'puts ActiveRecord::Base.configurations.inspect'
 #<ActiveRecord::DatabaseConfigurations:0x00007fc8eab02880 @configurations=[
   #<ActiveRecord::DatabaseConfigurations::UrlConfig:0x00007fc8eab020b0
@@ -3123,9 +3320,6 @@ development:
 $ echo $DATABASE_URL
 postgresql://localhost/my_database
 
-$ bin/rails runner 'puts ActiveRecord::Base.configurations'
-#<ActiveRecord::DatabaseConfigurations:0x00007fd50e209a28>
-
 $ bin/rails runner 'puts ActiveRecord::Base.configurations.inspect'
 #<ActiveRecord::DatabaseConfigurations:0x00007fc8eab02880 @configurations=[
   #<ActiveRecord::DatabaseConfigurations::UrlConfig:0x00007fc8eab020b0
@@ -3146,9 +3340,6 @@ development:
 
 $ echo $DATABASE_URL
 postgresql://localhost/my_database
-
-$ bin/rails runner 'puts ActiveRecord::Base.configurations'
-#<ActiveRecord::DatabaseConfigurations:0x00007fd50e209a28>
 
 $ bin/rails runner 'puts ActiveRecord::Base.configurations.inspect'
 #<ActiveRecord::DatabaseConfigurations:0x00007fc8eab02880 @configurations=[
@@ -3173,7 +3364,7 @@ Now the behavior is clear, that we are only using the connection information in 
 
 #### Configuring an SQLite3 Database
 
-Rails comes with built-in support for [SQLite3](http://www.sqlite.org), which is a lightweight serverless database application. While a busy production environment may overload SQLite, it works well for development and testing. Rails defaults to using an SQLite database when creating a new project, but you can always change it later.
+Rails comes with built-in support for [SQLite3](https://www.sqlite.org), which is a lightweight serverless database application. While Rails better configures SQLite for production workloads, a busy production environment may overload SQLite. Rails defaults to using an SQLite database when creating a new project because it is a zero configuration database that just works, but you can always change it later.
 
 Here's the section of the default configuration file (`config/database.yml`) with connection information for the development environment:
 
@@ -3185,7 +3376,20 @@ development:
   timeout: 5000
 ```
 
-NOTE: Rails uses an SQLite3 database for data storage by default because it is a zero configuration database that just works. Rails also supports MySQL (including MariaDB) and PostgreSQL "out of the box", and has plugins for many database systems. If you are using a database in a production environment Rails most likely has an adapter for it.
+[SQLite extensions](https://sqlite.org/loadext.html) are supported when using `sqlite3` gem v2.4.0 or later by configuring `extensions`:
+
+``` yaml
+development:
+  adapter: sqlite3
+  extensions:
+    - SQLean::UUID                     # module name responding to `.to_path`
+    - .sqlpkg/nalgeon/crypto/crypto.so # or a filesystem path
+    - <%= AppExtensions.location %>    # or ruby code returning a path
+```
+
+Many useful features can be added to SQLite through extensions. You may wish to browse the [SQLite extension hub](https://sqlpkg.org/) or use gems like [`sqlpkg-ruby`](https://github.com/fractaledmind/sqlpkg-ruby) and [`sqlean-ruby`](https://github.com/flavorjones/sqlean-ruby) that simplify extension management.
+
+Other configuration options are described in the [SQLite3Adapter documentation]( https://api.rubyonrails.org/classes/ActiveRecord/ConnectionAdapters/SQLite3Adapter.html).
 
 #### Configuring a MySQL or MariaDB Database
 
@@ -3462,16 +3666,147 @@ NOTE: There is no guarantee that your initializers will run after all the gem
 initializers, so any initialization code that depends on a given gem having been
 initialized should go into a `config.after_initialize` block.
 
+Load Hooks
+----------
+
+Rails code can often be referenced on load of an application. Rails is responsible for the load order of these frameworks, so when you load frameworks, such as `ActiveRecord::Base`, prematurely you are violating an implicit contract your application has with Rails. Moreover, by loading code such as `ActiveRecord::Base` on boot of your application you are loading entire frameworks which may slow down your boot time and could cause conflicts with load order and boot of your application.
+
+Load and configuration hooks are the API that allow you to hook into this initialization process without violating the load contract with Rails. This will also mitigate boot performance degradation and avoid conflicts.
+
+### Avoid Loading Rails Frameworks
+
+Since Ruby is a dynamic language, some code will cause different Rails frameworks to load. Take this snippet for instance:
+
+```ruby
+ActiveRecord::Base.include(MyActiveRecordHelper)
+```
+
+This snippet means that when this file is loaded, it will encounter `ActiveRecord::Base`. This encounter causes Ruby to look for the definition of that constant and will require it. This causes the entire Active Record framework to be loaded on boot.
+
+`ActiveSupport.on_load` is a mechanism that can be used to defer the loading of code until it is actually needed. The snippet above can be changed to:
+
+```ruby
+ActiveSupport.on_load(:active_record) do
+  include MyActiveRecordHelper
+end
+```
+
+This new snippet will only include `MyActiveRecordHelper` when `ActiveRecord::Base` is loaded.
+
+### When are Hooks called?
+
+In the Rails framework these hooks are called when a specific library is loaded. For example, when `ActionController::Base` is loaded, the `:action_controller_base` hook is called. This means that all `ActiveSupport.on_load` calls with `:action_controller_base` hooks will be called in the context of `ActionController::Base` (that means `self` will be an `ActionController::Base`).
+
+### Modifying Code to Use Load Hooks
+
+Modifying code is generally straightforward. If you have a line of code that refers to a Rails framework such as `ActiveRecord::Base` you can wrap that code in a load hook.
+
+**Modifying calls to `include`**
+
+```ruby
+ActiveRecord::Base.include(MyActiveRecordHelper)
+```
+
+becomes
+
+```ruby
+ActiveSupport.on_load(:active_record) do
+  # self refers to ActiveRecord::Base here,
+  # so we can call .include
+  include MyActiveRecordHelper
+end
+```
+
+**Modifying calls to `prepend`**
+
+```ruby
+ActionController::Base.prepend(MyActionControllerHelper)
+```
+
+becomes
+
+```ruby
+ActiveSupport.on_load(:action_controller_base) do
+  # self refers to ActionController::Base here,
+  # so we can call .prepend
+  prepend MyActionControllerHelper
+end
+```
+
+**Modifying calls to class methods**
+
+```ruby
+ActiveRecord::Base.include_root_in_json = true
+```
+
+becomes
+
+```ruby
+ActiveSupport.on_load(:active_record) do
+  # self refers to ActiveRecord::Base here
+  self.include_root_in_json = true
+end
+```
+
+### Available Load Hooks
+
+These are the load hooks you can use in your own code. To hook into the initialization process of one of the following classes use the available hook.
+
+| Class                                | Hook                                 |
+| -------------------------------------| ------------------------------------ |
+| `ActionCable`                        | `action_cable`                       |
+| `ActionCable::Channel::Base`         | `action_cable_channel`               |
+| `ActionCable::Connection::Base`      | `action_cable_connection`            |
+| `ActionCable::Connection::TestCase`  | `action_cable_connection_test_case`  |
+| `ActionController::API`              | `action_controller_api`              |
+| `ActionController::API`              | `action_controller`                  |
+| `ActionController::Base`             | `action_controller_base`             |
+| `ActionController::Base`             | `action_controller`                  |
+| `ActionController::TestCase`         | `action_controller_test_case`        |
+| `ActionDispatch::IntegrationTest`    | `action_dispatch_integration_test`   |
+| `ActionDispatch::Response`           | `action_dispatch_response`           |
+| `ActionDispatch::Request`            | `action_dispatch_request`            |
+| `ActionDispatch::SystemTestCase`     | `action_dispatch_system_test_case`   |
+| `ActionMailbox::Base`                | `action_mailbox`                     |
+| `ActionMailbox::InboundEmail`        | `action_mailbox_inbound_email`       |
+| `ActionMailbox::Record`              | `action_mailbox_record`              |
+| `ActionMailbox::TestCase`            | `action_mailbox_test_case`           |
+| `ActionMailer::Base`                 | `action_mailer`                      |
+| `ActionMailer::TestCase`             | `action_mailer_test_case`            |
+| `ActionText::Content`                | `action_text_content`                |
+| `ActionText::Record`                 | `action_text_record`                 |
+| `ActionText::RichText`               | `action_text_rich_text`              |
+| `ActionText::EncryptedRichText`      | `action_text_encrypted_rich_text`    |
+| `ActionView::Base`                   | `action_view`                        |
+| `ActionView::TestCase`               | `action_view_test_case`              |
+| `ActiveJob::Base`                    | `active_job`                         |
+| `ActiveJob::TestCase`                | `active_job_test_case`               |
+| `ActiveModel::Model`                 | `active_model`                       |
+| `ActiveModel::Translation`           | `active_model_translation`           |
+| `ActiveRecord::Base`                 | `active_record`                      |
+| `ActiveRecord::Encryption`           | `active_record_encryption`           |
+| `ActiveRecord::TestFixtures`         | `active_record_fixtures`             |
+| `ActiveRecord::ConnectionAdapters::PostgreSQLAdapter`    | `active_record_postgresqladapter`    |
+| `ActiveRecord::ConnectionAdapters::Mysql2Adapter`        | `active_record_mysql2adapter`        |
+| `ActiveRecord::ConnectionAdapters::TrilogyAdapter`       | `active_record_trilogyadapter`       |
+| `ActiveRecord::ConnectionAdapters::SQLite3Adapter`       | `active_record_sqlite3adapter`       |
+| `ActiveStorage::Attachment`          | `active_storage_attachment`          |
+| `ActiveStorage::VariantRecord`       | `active_storage_variant_record`      |
+| `ActiveStorage::Blob`                | `active_storage_blob`                |
+| `ActiveStorage::Record`              | `active_storage_record`              |
+| `ActiveSupport::TestCase`            | `active_support_test_case`           |
+| `i18n`                               | `i18n`                               |
+
 Initialization Events
 ---------------------
 
 Rails has 5 initialization events which can be hooked into (listed in the order that they are run):
 
-* `before_configuration`: This is run as soon as the application constant inherits from `Rails::Application`. The `config` calls are evaluated before this happens.
+* `before_configuration`: This is run when the application class inherits from `Rails::Application` in `config/application.rb`. Before the class body is executed. Engines may use this hook to run code before the application itself gets configured.
 
 * `before_initialize`: This is run directly before the initialization process of the application occurs with the `:bootstrap_hook` initializer near the beginning of the Rails initialization process.
 
-* `to_prepare`: Run after the initializers are run for all Railties (including the application itself), but before eager loading and the middleware stack is built. More importantly, will run upon every code reload in `development`, but only once (during boot-up) in `production` and `test`.
+* `to_prepare`: Run after the initializers are run for all Railties (including the application itself) and after the middleware stack is built, but before eager loading. More importantly, will run upon every code reload in `development`, but only once (during boot-up) in `production` and `test`.
 
 * `before_eager_load`: This is run directly before eager loading occurs, which is the default behavior for the `production` environment and not for the `development` environment.
 
@@ -3566,8 +3901,6 @@ Below is a comprehensive list of all the initializers found in Rails in the orde
 * `active_record.migration_error`: Configures middleware to check for pending migrations.
 
 * `active_record.check_schema_cache_dump`: Loads the schema cache dump if configured and available.
-
-* `active_record.warn_on_records_fetched_greater_than`: Enables warnings when queries return large numbers of records.
 
 * `active_record.set_configs`: Sets up Active Record by using the settings in `config.active_record` by `send`'ing the method names as setters to `ActiveRecord::Base` and passing the values through.
 
@@ -3717,7 +4050,7 @@ end
 ```
 
 ```ruby
-Rails.configuration.payment['merchant_id'] # => production_merchant_id or development_merchant_id
+Rails.configuration.payment["merchant_id"] # => production_merchant_id or development_merchant_id
 ```
 
 `Rails::Application.config_for` supports a `shared` configuration to group common
@@ -3761,24 +4094,3 @@ Disallow: /
 
 To block just specific pages, it's necessary to use a more complex syntax. Learn
 it on the [official documentation](https://www.robotstxt.org/robotstxt.html).
-
-Evented File System Monitor
----------------------------
-
-If the [listen gem](https://github.com/guard/listen) is loaded Rails uses an
-evented file system monitor to detect changes when reloading is enabled:
-
-```ruby
-group :development do
-  gem "listen", "~> 3.5"
-end
-```
-
-Otherwise, in every request Rails walks the application tree to check if
-anything has changed.
-
-On Linux and macOS no additional gems are needed, but some are required
-[for *BSD](https://github.com/guard/listen#on-bsd) and
-[for Windows](https://github.com/guard/listen#on-windows).
-
-Note that [some setups are unsupported](https://github.com/guard/listen#issues--limitations).

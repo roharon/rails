@@ -29,7 +29,7 @@ class ActiveStorage::Blob < ActiveStorage::Record
   # :method:
   #
   # Returns the associated ActiveStorage::Attachment instances.
-  has_many :attachments
+  has_many :attachments, autosave: false
 
   ##
   # :singleton-method:
@@ -71,9 +71,8 @@ class ActiveStorage::Blob < ActiveStorage::Record
     end
 
     # Works like +find_signed+, but will raise an +ActiveSupport::MessageVerifier::InvalidSignature+
-    # exception if the +signed_id+ has either expired, has a purpose mismatch, is for another record,
-    # or has been tampered with. It will also raise an +ActiveRecord::RecordNotFound+ exception if
-    # the valid signed id can't find a record.
+    # exception if the +signed_id+ has either expired, has a purpose mismatch, or has been tampered with.
+    # It will also raise an +ActiveRecord::RecordNotFound+ exception if the valid signed id can't find a record.
     def find_signed!(id, record: nil, purpose: :blob_id)
       super(id, purpose: purpose)
     end
@@ -142,12 +141,12 @@ class ActiveStorage::Blob < ActiveStorage::Record
     end
 
     # Concatenate multiple blobs into a single "composed" blob.
-    def compose(blobs, filename:, content_type: nil, metadata: nil)
+    def compose(blobs, key: nil, filename:, content_type: nil, metadata: nil)
       raise ActiveRecord::RecordNotSaved, "All blobs must be persisted." if blobs.any?(&:new_record?)
 
       content_type ||= blobs.pluck(:content_type).compact.first
 
-      new(filename: filename, content_type: content_type, metadata: metadata, byte_size: blobs.sum(&:byte_size)).tap do |combined_blob|
+      new(key: key, filename: filename, content_type: content_type, metadata: metadata, byte_size: blobs.sum(&:byte_size)).tap do |combined_blob|
         combined_blob.compose(blobs.pluck(:key))
         combined_blob.save!
       end

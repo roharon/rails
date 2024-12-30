@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "thread"
 require "cases/helper"
 require "models/person"
 require "models/job"
@@ -180,7 +179,6 @@ class OptimisticLockingTest < ActiveRecord::TestCase
     p1 = Person.find(1)
     assert_equal 0, p1.lock_version
 
-    sleep 1.0 unless supports_datetime_with_precision? # Remove once MySQL 5.5 support is dropped.
     p1.touch
 
     assert_equal 1, p1.lock_version
@@ -293,19 +291,55 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   end
 
   def test_touch_existing_lock_without_default_should_work_with_null_in_the_database
-    ActiveRecord::Base.connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
+    ActiveRecord::Base.lease_connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
     t1 = LockWithoutDefault.last
 
     assert_equal 0, t1.lock_version
     assert_nil t1.lock_version_before_type_cast
 
-    sleep 1.0 unless supports_datetime_with_precision? # Remove once MySQL 5.5 support is dropped.
     t1.touch
 
     assert_equal 1, t1.lock_version
     assert_not_predicate t1, :changed?
     assert_predicate t1, :saved_changes?
     assert_equal ["lock_version", "updated_at"], t1.saved_changes.keys.sort
+  end
+
+  def test_update_lock_version_to_nil_without_validation_or_constraint_raises_error
+    t1 = LockWithoutDefault.create!(title: "title1")
+    error = assert_raises(RuntimeError) { t1.update(lock_version: nil) }
+
+    assert_match(locking_column_nil_error_message, error.message)
+
+    error = assert_raises(RuntimeError) { t1.update!(lock_version: nil) }
+
+    assert_match(locking_column_nil_error_message, error.message)
+  end
+
+  def test_update_lock_version_to_nil_without_validation_raises
+    person = Person.find(1)
+    error = assert_raises(RuntimeError) { person.update(lock_version: nil) }
+
+    assert_match(locking_column_nil_error_message, error.message)
+
+    error = assert_raises(RuntimeError) { person.update!(lock_version: nil) }
+
+    assert_match(locking_column_nil_error_message, error.message)
+  end
+
+  def test_update_lock_version_to_nil_with_validation_does_not_raise_runtime_lock_version_error
+    person = LockVersionValidatedPerson.find(1)
+    assert_nothing_raised { person.update(lock_version: nil) }
+
+    assert_equal ["is not a number"], person.errors[:lock_version]
+  end
+
+  def test_update_bang_lock_version_to_nil_with_validation_does_not_raise_runtime_lock_version_error
+    error = assert_raises(ActiveRecord::RecordInvalid) do
+      LockVersionValidatedPerson.find(1).update!(lock_version: nil)
+    end
+
+    assert_equal ["is not a number"], error.record.errors[:lock_version]
   end
 
   def test_touch_stale_object_with_lock_without_default
@@ -322,7 +356,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   end
 
   def test_lock_without_default_should_work_with_null_in_the_database
-    ActiveRecord::Base.connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
+    ActiveRecord::Base.lease_connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
     t1 = LockWithoutDefault.last
     t2 = LockWithoutDefault.find(t1.id)
 
@@ -344,7 +378,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   end
 
   def test_update_with_lock_version_without_default_should_work_on_dirty_value_before_type_cast
-    ActiveRecord::Base.connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
+    ActiveRecord::Base.lease_connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
     t1 = LockWithoutDefault.last
 
     assert_equal 0, t1.lock_version
@@ -361,7 +395,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   end
 
   def test_destroy_with_lock_version_without_default_should_work_on_dirty_value_before_type_cast
-    ActiveRecord::Base.connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
+    ActiveRecord::Base.lease_connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
     t1 = LockWithoutDefault.last
 
     assert_equal 0, t1.lock_version
@@ -411,7 +445,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   end
 
   def test_lock_with_custom_column_without_default_should_work_with_null_in_the_database
-    ActiveRecord::Base.connection.execute("INSERT INTO lock_without_defaults_cust(title) VALUES('title1')")
+    ActiveRecord::Base.lease_connection.execute("INSERT INTO lock_without_defaults_cust(title) VALUES('title1')")
 
     t1 = LockWithCustomColumnWithoutDefault.last
     t2 = LockWithCustomColumnWithoutDefault.find(t1.id)
@@ -468,7 +502,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
     assert_equal "unchangeable name", s.name
   end
 
-  def test_quote_table_name
+  def test_quote_table_name_reserved_word_references
     ref = references(:michael_magician)
     ref.favorite = !ref.favorite
     assert ref.save
@@ -550,7 +584,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
     assert_not_empty p.treasures
     p.destroy
     assert_empty p.treasures
-    assert_empty RichPerson.connection.select_all("SELECT * FROM peoples_treasures WHERE rich_person_id = 1")
+    assert_empty RichPerson.lease_connection.select_all("SELECT * FROM peoples_treasures WHERE rich_person_id = 1")
   end
 
   def test_yaml_dumping_with_lock_column
@@ -560,6 +594,11 @@ class OptimisticLockingTest < ActiveRecord::TestCase
 
     assert_equal t1.attributes, t2.attributes
   end
+
+  private
+    def locking_column_nil_error_message
+      /'lock_version' should not be set to `nil`/
+    end
 end
 
 class OptimisticLockingWithSchemaChangeTest < ActiveRecord::TestCase
@@ -613,7 +652,7 @@ class OptimisticLockingWithSchemaChangeTest < ActiveRecord::TestCase
   end
 
   def test_destroy_existing_object_with_locking_column_value_null_in_the_database
-    ActiveRecord::Base.connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
+    ActiveRecord::Base.lease_connection.execute("INSERT INTO lock_without_defaults(title) VALUES('title1')")
     t1 = LockWithoutDefault.last
 
     assert_equal 0, t1.lock_version
@@ -639,12 +678,12 @@ class OptimisticLockingWithSchemaChangeTest < ActiveRecord::TestCase
 
   private
     def add_counter_column_to(model, col = "test_count")
-      model.connection.add_column model.table_name, col, :integer, null: false, default: 0
+      model.lease_connection.add_column model.table_name, col, :integer, null: false, default: 0
       model.reset_column_information
     end
 
     def remove_counter_column_from(model, col = :test_count)
-      model.connection.remove_column model.table_name, col
+      model.lease_connection.remove_column model.table_name, col
       model.reset_column_information
     end
 
@@ -747,10 +786,10 @@ class PessimisticLockingTest < ActiveRecord::TestCase
     def test_with_lock_configures_transaction
       person = Person.find 1
       Person.transaction do
-        outer_transaction = Person.connection.transaction_manager.current_transaction
+        outer_transaction = Person.lease_connection.transaction_manager.current_transaction
         assert_equal true, outer_transaction.joinable?
         person.with_lock(requires_new: true, joinable: false) do
-          current_transaction = Person.connection.transaction_manager.current_transaction
+          current_transaction = Person.lease_connection.transaction_manager.current_transaction
           assert_not_equal outer_transaction, current_transaction
           assert_equal false, current_transaction.joinable?
         end
@@ -770,7 +809,7 @@ class PessimisticLockingTest < ActiveRecord::TestCase
       def test_with_lock_sets_isolation
         person = Person.find 1
         person.with_lock(isolation: :read_uncommitted) do
-          current_transaction = Person.connection.transaction_manager.current_transaction
+          current_transaction = Person.lease_connection.transaction_manager.current_transaction
           assert_equal :read_uncommitted, current_transaction.isolation_level
         end
       end
@@ -798,7 +837,7 @@ class PessimisticLockingTest < ActiveRecord::TestCase
 
         a = Thread.new do
           t0 = Time.now
-          Person.transaction do
+          Person.transaction(joinable: false) do
             yield
             b_wakeup.set
             a_wakeup.wait

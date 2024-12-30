@@ -7,7 +7,7 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
   include DdlHelper
 
   def setup
-    @conn = ActiveRecord::Base.connection
+    @conn = ActiveRecord::Base.lease_connection
     @original_db_warnings_action = :ignore
   end
 
@@ -66,6 +66,11 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
     end
 
     assert_equal false, adapter.prepared_statements
+  end
+
+  def test_exec_query_with_prepared_statements
+    result = @conn.exec_query("SELECT 1", "SQL", [], prepare: true)
+    assert_equal [{ "1" => 1 }], result.to_a
   end
 
   def test_exec_query_nothing_raises_with_no_result_queries
@@ -265,7 +270,7 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
     ActiveRecord::Base.establish_connection(
       db_config.configuration_hash.merge("read_timeout" => 1)
     )
-    connection = ActiveRecord::Base.connection
+    connection = ActiveRecord::Base.lease_connection
 
     error = assert_raises(ActiveRecord::AdapterTimeout) do
       connection.execute("SELECT SLEEP(2)")

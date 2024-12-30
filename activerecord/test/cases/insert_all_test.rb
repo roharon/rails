@@ -20,6 +20,7 @@ class InsertAllTest < ActiveRecord::TestCase
 
   def setup
     Arel::Table.engine = nil # should not rely on the global Arel::Table.engine
+    @original_db_warnings_action = :ignore
   end
 
   def teardown
@@ -44,6 +45,17 @@ class InsertAllTest < ActiveRecord::TestCase
     assert_difference "Book.count", +1 do
       Book.insert!({ name: "Rework", author_id: 1 })
     end
+  end
+
+  def test_insert_with_type_casting_and_serialize_is_consistent
+    skip unless supports_insert_returning?
+
+    book_name = ["Array"]
+    created_book_id = Book.create!(name: book_name).id
+    inserted_book_id = Book.insert!({ name: book_name }, returning: :id).first["id"]
+    created_book = Book.find_by!(id: created_book_id)
+    inserted_book = Book.find_by!(id: inserted_book_id)
+    assert_equal created_book.name, inserted_book.name
   end
 
   def test_insert_all
@@ -137,6 +149,14 @@ class InsertAllTest < ActiveRecord::TestCase
         Book.insert_all [{ id: 1, name: "Agile Web Development with Rails" }]
       end
     end
+
+    def test_insert_all_succeeds_when_passed_no_attributes
+      skip unless supports_insert_on_duplicate_skip?
+
+      assert_nothing_raised do
+        Book.insert_all [{}]
+      end
+    end
   end
 
   def test_insert_all_with_skip_duplicates_and_autonumber_id_not_given
@@ -168,10 +188,10 @@ class InsertAllTest < ActiveRecord::TestCase
   def test_skip_duplicates_strategy_does_not_secretly_upsert
     skip unless supports_insert_on_duplicate_skip?
 
-    book = Book.create!(author_id: 8, name: "Refactoring", format: "EXPECTED")
+    book = Book.create!(format: "EXPECTED", author_id: 8, name: "Refactoring")
 
     assert_no_difference "Book.count" do
-      Book.insert({ author_id: 8, name: "Refactoring", format: "UNEXPECTED" })
+      Book.insert_all([{ format: "UNEXPECTED", author_id: 8, name: "Refactoring" }])
     end
 
     assert_equal "EXPECTED", book.reload.format
@@ -235,7 +255,7 @@ class InsertAllTest < ActiveRecord::TestCase
     skip unless supports_insert_conflict_target?
 
     columns = [:author_id, :name]
-    assert ActiveRecord::Base.connection.index_exists?(:books, columns)
+    assert ActiveRecord::Base.lease_connection.index_exists?(:books, columns)
 
     assert_difference "Book.count", +2 do
       Book.insert_all [{ name: "Remote", author_id: 1 }], unique_by: columns.reverse
@@ -333,6 +353,24 @@ class InsertAllTest < ActiveRecord::TestCase
     capture_log_output do |output|
       Book.upsert({ name: "Remote", author_id: 1 })
       assert_match "Book Upsert", output.string
+    end
+  end
+
+  unless in_memory_db?
+    def test_upsert_and_db_warnings
+      skip unless supports_insert_on_duplicate_update?
+
+      begin
+        with_db_warnings_action(:raise) do
+          assert_nothing_raised do
+            Book.upsert({ id: 1001, name: "Remote", author_id: 1 })
+          end
+        end
+      ensure
+        # We need to explicitly remove the record, because `with_db_warnings_action`
+        # prevents the wrapping transaction to be rolled back.
+        Book.delete(1001)
+      end
     end
   end
 
@@ -460,7 +498,7 @@ class InsertAllTest < ActiveRecord::TestCase
   end
 
   def test_upsert_all_respects_updated_at_precision_when_touched_implicitly
-    skip unless supports_insert_on_duplicate_update? && supports_datetime_with_precision?
+    skip unless supports_insert_on_duplicate_update?
 
     Book.insert_all [{ id: 101, name: "Out of the Silent Planet", published_on: Date.new(1938, 4, 1), updated_at: 5.years.ago, updated_on: 5.years.ago }]
 
@@ -550,7 +588,7 @@ class InsertAllTest < ActiveRecord::TestCase
   end
 
   def test_upsert_all_respects_created_at_precision_when_touched_implicitly
-    skip unless supports_insert_on_duplicate_update? && supports_datetime_with_precision?
+    skip unless supports_insert_on_duplicate_update?
 
     # A single upsert can occur exactly at the seconds boundary (when usec is naturally zero), so try multiple times.
     has_subsecond_precision = (1..100).any? do |i|
@@ -691,6 +729,14 @@ class InsertAllTest < ActiveRecord::TestCase
     end
   end
 
+  def test_insert_all_resets_relation
+    audit_logs = Developer.create!(name: "Alice").audit_logs.load
+
+    assert_changes "audit_logs.loaded?", from: true, to: false do
+      audit_logs.insert_all!([{ message: "event" }])
+    end
+  end
+
   def test_insert_all_create_with
     assert_difference "Book.where(format: 'X').count", +2 do
       Book.create_with(format: "X").insert_all!([ { name: "A" }, { name: "B" } ])
@@ -723,6 +769,16 @@ class InsertAllTest < ActiveRecord::TestCase
     end
   end
 
+  def test_upsert_all_resets_relation
+    skip unless supports_insert_on_duplicate_update?
+
+    audit_logs = Developer.create!(name: "Alice").audit_logs.load
+
+    assert_changes "audit_logs.loaded?", from: true, to: false do
+      audit_logs.upsert_all([{ id: 1, message: "event" }])
+    end
+  end
+
   def test_upsert_all_create_with
     skip unless supports_insert_on_duplicate_update?
 
@@ -732,6 +788,8 @@ class InsertAllTest < ActiveRecord::TestCase
   end
 
   def test_upsert_all_has_many_through
+    skip unless supports_insert_on_duplicate_update?
+
     book = Book.first
     assert_raise(ArgumentError) { book.subscribers.upsert_all([ { nick: "Jimmy" } ]) }
   end
@@ -747,6 +805,26 @@ class InsertAllTest < ActiveRecord::TestCase
     )
     assert_equal "published", Book.find(1).status
     assert_equal "written", Book.find(2).status
+  end
+
+  if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
+    def test_upsert_all_updates_using_values_function_on_duplicate_raw_sql
+      skip unless supports_insert_on_duplicate_update?
+
+      b1 = Book.create!(name: "Name")
+      b2 = Book.create!(name: nil)
+
+      Book.upsert_all(
+        [{ id: b1.id, name: "No Name" }, { id: b2.id, name: "No Name" }],
+        on_duplicate: Arel.sql("name = IFNULL(name, values(name))")
+      )
+
+      b1.reload
+      b2.reload
+
+      assert_equal "Name", b1.name
+      assert_equal "No Name", b2.name
+    end
   end
 
   def test_upsert_all_updates_using_provided_sql_and_unique_by
@@ -769,7 +847,20 @@ class InsertAllTest < ActiveRecord::TestCase
     error = assert_raises ArgumentError do
       Book.upsert_all [{ name: "Rework", author_id: 1 }], unique_by: :isbn
     end
-    assert_match "#{ActiveRecord::Base.connection.class} does not support :unique_by", error.message
+    assert_match "#{ActiveRecord::Base.lease_connection.class} does not support :unique_by", error.message
+  end
+
+  if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
+    def test_insert_all_when_table_name_contains_database
+      database_name = Book.connection_db_config.database
+      Book.table_name = "#{database_name}.books"
+
+      assert_nothing_raised do
+        Book.insert_all! [{ name: "Rework", author_id: 1 }]
+      end
+    ensure
+      Book.table_name = "books"
+    end
   end
 
   private

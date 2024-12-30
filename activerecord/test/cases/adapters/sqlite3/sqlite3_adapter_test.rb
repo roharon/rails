@@ -15,6 +15,12 @@ module ActiveRecord
       class DualEncoding < ActiveRecord::Base
       end
 
+      class SQLiteExtensionSpec
+        def self.to_path
+          "/path/to/sqlite3_extension"
+        end
+      end
+
       def setup
         @conn = SQLite3Adapter.new(
           database: ":memory:",
@@ -23,12 +29,14 @@ module ActiveRecord
         )
       end
 
-      def test_bad_connection
-        error = assert_raise ActiveRecord::NoDatabaseError do
-          connection = SQLite3Adapter.new(adapter: "sqlite3", database: "/tmp/should/_not/_exist/-cinco-dog.db")
+      def test_database_should_get_created_when_missing_parent_directories_for_database_path
+        dir = Dir.mktmpdir
+        db_path = File.join(dir, "_not_exist/-cinco-dog.sqlite3")
+        assert_nothing_raised do
+          connection = SQLite3Adapter.new(adapter: "sqlite3", database: db_path)
           connection.drop_table "ex", if_exists: true
         end
-        assert_kind_of ActiveRecord::ConnectionAdapters::NullPool, error.connection_pool
+        assert SQLite3Adapter.database_exists?(adapter: "sqlite3", database: db_path)
       end
 
       def test_database_exists_returns_false_when_the_database_does_not_exist
@@ -48,7 +56,7 @@ module ActiveRecord
           tf = Tempfile.open "whatever"
           url = "sqlite3:#{tf.path}"
           ActiveRecord::Base.establish_connection(url)
-          assert ActiveRecord::Base.connection
+          assert ActiveRecord::Base.lease_connection
         ensure
           tf.close
           tf.unlink
@@ -59,7 +67,7 @@ module ActiveRecord
           original_connection = ActiveRecord::Base.remove_connection
           url = "sqlite3::memory:"
           ActiveRecord::Base.establish_connection(url)
-          assert ActiveRecord::Base.connection
+          assert ActiveRecord::Base.lease_connection
         ensure
           ActiveRecord::Base.establish_connection(original_connection)
         end
@@ -74,7 +82,7 @@ module ActiveRecord
         owner = Owner.create!(name: "hello".encode("ascii-8bit"))
         owner.reload
         select = Owner.columns.map { |c| "typeof(#{c.name})" }.join ", "
-        result = Owner.connection.exec_query <<~SQL
+        result = Owner.lease_connection.exec_query <<~SQL
           SELECT #{select}
           FROM   #{Owner.table_name}
           WHERE  #{Owner.primary_key} = #{owner.id}
@@ -224,27 +232,31 @@ module ActiveRecord
           assert_match(/nrecognized journal_mode false/, error.message)
         else
           # must use a new, separate database file that hasn't been opened in WAL mode before
-          with_file_connection(database: "fixtures/journal_mode_test.sqlite3", pragmas: { "journal_mode" => "delete" }) do |conn|
-            assert_equal [{ "journal_mode" => "delete" }], conn.execute("PRAGMA journal_mode")
-          end
+          Dir.mktmpdir do |tmpdir|
+            database_file = File.join(tmpdir, "journal_mode_test.sqlite3")
 
-          with_file_connection(database: "fixtures/journal_mode_test.sqlite3", pragmas: { "journal_mode" => :delete }) do |conn|
-            assert_equal [{ "journal_mode" => "delete" }], conn.execute("PRAGMA journal_mode")
-          end
-
-          error = assert_raises(ActiveRecord::StatementInvalid) do
-            with_file_connection(database: "fixtures/journal_mode_test.sqlite3", pragmas: { "journal_mode" => 0 }) do |conn|
-              conn.execute("PRAGMA journal_mode")
+            with_file_connection(database: database_file, pragmas: { "journal_mode" => "delete" }) do |conn|
+              assert_equal [{ "journal_mode" => "delete" }], conn.execute("PRAGMA journal_mode")
             end
-          end
-          assert_match(/unrecognized journal_mode 0/, error.message)
 
-          error = assert_raises(ActiveRecord::StatementInvalid) do
-            with_file_connection(database: "fixtures/journal_mode_test.sqlite3", pragmas: { "journal_mode" => false }) do |conn|
-              conn.execute("PRAGMA journal_mode")
+            with_file_connection(database: database_file, pragmas: { "journal_mode" => :delete }) do |conn|
+              assert_equal [{ "journal_mode" => "delete" }], conn.execute("PRAGMA journal_mode")
             end
+
+            error = assert_raises(ActiveRecord::StatementInvalid) do
+              with_file_connection(database: database_file, pragmas: { "journal_mode" => 0 }) do |conn|
+                conn.execute("PRAGMA journal_mode")
+              end
+            end
+            assert_match(/unrecognized journal_mode 0/, error.message)
+
+            error = assert_raises(ActiveRecord::StatementInvalid) do
+              with_file_connection(database: database_file, pragmas: { "journal_mode" => false }) do |conn|
+                conn.execute("PRAGMA journal_mode")
+              end
+            end
+            assert_match(/unrecognized journal_mode false/, error.message)
           end
-          assert_match(/unrecognized journal_mode false/, error.message)
         end
       end
 
@@ -287,14 +299,14 @@ module ActiveRecord
             conn.execute("PRAGMA journal_size_limit")
           end
         end
-        assert_match(/undefined method `to_i'/, error.message)
+        assert_match(/undefined method [`']to_i'/, error.message)
 
         error = assert_raises(ActiveRecord::StatementInvalid) do
           send(method_name, pragmas: { journal_size_limit: :false }) do |conn|
             conn.execute("PRAGMA journal_size_limit")
           end
         end
-        assert_match(/undefined method `to_i'/, error.message)
+        assert_match(/undefined method [`']to_i'/, error.message)
       end
 
       def test_overriding_default_mmap_size_pragma
@@ -313,14 +325,14 @@ module ActiveRecord
               conn.execute("PRAGMA mmap_size")
             end
           end
-          assert_match(/undefined method `to_i'/, error.message)
+          assert_match(/undefined method [`']to_i'/, error.message)
 
           error = assert_raises(ActiveRecord::StatementInvalid) do
             with_memory_connection(pragmas: { mmap_size: :false }) do |conn|
               conn.execute("PRAGMA mmap_size")
             end
           end
-          assert_match(/undefined method `to_i'/, error.message)
+          assert_match(/undefined method [`']to_i'/, error.message)
         else
           with_file_connection(pragmas: { mmap_size: 100 }) do |conn|
             assert_equal [{ "mmap_size" => 100 }], conn.execute("PRAGMA mmap_size")
@@ -335,14 +347,14 @@ module ActiveRecord
               conn.execute("PRAGMA mmap_size")
             end
           end
-          assert_match(/undefined method `to_i'/, error.message)
+          assert_match(/undefined method [`']to_i'/, error.message)
 
           error = assert_raises(ActiveRecord::StatementInvalid) do
             with_file_connection(pragmas: { mmap_size: :false }) do |conn|
               conn.execute("PRAGMA mmap_size")
             end
           end
-          assert_match(/undefined method `to_i'/, error.message)
+          assert_match(/undefined method [`']to_i'/, error.message)
         end
       end
 
@@ -362,14 +374,14 @@ module ActiveRecord
             conn.execute("PRAGMA cache_size")
           end
         end
-        assert_match(/undefined method `to_i'/, error.message)
+        assert_match(/undefined method [`']to_i'/, error.message)
 
         error = assert_raises(ActiveRecord::StatementInvalid) do
           send(method_name, pragmas: { cache_size: :false }) do |conn|
             conn.execute("PRAGMA cache_size")
           end
         end
-        assert_match(/undefined method `to_i'/, error.message)
+        assert_match(/undefined method [`']to_i'/, error.message)
       end
 
       def test_setting_new_pragma
@@ -458,7 +470,7 @@ module ActiveRecord
       end
 
       def test_quote_binary_column_escapes_it
-        DualEncoding.connection.execute(<<~SQL)
+        DualEncoding.lease_connection.execute(<<~SQL)
           CREATE TABLE IF NOT EXISTS dual_encodings (
             id integer PRIMARY KEY AUTOINCREMENT,
             name varchar(255),
@@ -470,7 +482,7 @@ module ActiveRecord
         binary.save!
         assert_equal str, binary.data
       ensure
-        DualEncoding.connection.drop_table "dual_encodings", if_exists: true
+        DualEncoding.lease_connection.drop_table "dual_encodings", if_exists: true
       end
 
       def test_type_cast_should_not_mutate_encoding
@@ -491,10 +503,6 @@ module ActiveRecord
           assert_equal 10, record["number"]
           assert_equal 1, record["id"]
         end
-      end
-
-      def test_quote_string
-        assert_equal "''", @conn.quote_string("'")
       end
 
       def test_insert_logged
@@ -594,7 +602,7 @@ module ActiveRecord
 
       def test_tables_logs_name
         sql = <<~SQL
-          SELECT name FROM sqlite_master WHERE name <> 'sqlite_sequence' AND type IN ('table')
+          SELECT name FROM pragma_table_list WHERE schema <> 'temp' AND name NOT IN ('sqlite_sequence', 'sqlite_schema') AND type IN ('table')
         SQL
         @conn.connect!
         assert_logged [[sql.squish, "SCHEMA", []]] do
@@ -605,7 +613,7 @@ module ActiveRecord
       def test_table_exists_logs_name
         with_example_table do
           sql = <<~SQL
-            SELECT name FROM sqlite_master WHERE name <> 'sqlite_sequence' AND name = 'ex' AND type IN ('table')
+            SELECT name FROM pragma_table_list WHERE schema <> 'temp' AND name NOT IN ('sqlite_sequence', 'sqlite_schema') AND name = 'ex' AND type IN ('table')
           SQL
           assert_logged [[sql.squish, "SCHEMA", []]] do
             assert @conn.table_exists?("ex")
@@ -696,7 +704,16 @@ module ActiveRecord
         end
       end
 
-      if ActiveRecord::Base.connection.supports_expression_index?
+      def test_partial_index_with_comment
+        with_example_table do
+          @conn.add_index "ex", :id, name: "fun", where: "number > 0 /*tag:test*/"
+          index = @conn.indexes("ex").find { |idx| idx.name == "fun" }
+          assert_equal ["id"], index.columns
+          assert_equal "number > 0", index.where
+        end
+      end
+
+      if ActiveRecord::Base.lease_connection.supports_expression_index?
         def test_expression_index
           with_example_table do
             @conn.add_index "ex", "max(id, number)", name: "expression"
@@ -763,7 +780,7 @@ module ActiveRecord
       end
 
       def test_copy_table_with_existing_records_have_custom_primary_key
-        connection = BarcodeCustomPk.connection
+        connection = BarcodeCustomPk.lease_connection
         connection.create_table(:barcode_custom_pks, primary_key: "code", id: :string, limit: 42, force: true) do |t|
           t.text :other_attr
         end
@@ -782,7 +799,7 @@ module ActiveRecord
       end
 
       def test_copy_table_with_composite_primary_keys
-        connection = BarcodeCpk.connection
+        connection = BarcodeCpk.lease_connection
         connection.create_table(:barcode_cpks, primary_key: ["region", "code"], force: true) do |t|
           t.string :region
           t.string :code
@@ -804,7 +821,7 @@ module ActiveRecord
       end
 
       def test_custom_primary_key_in_create_table
-        connection = Barcode.connection
+        connection = Barcode.lease_connection
         connection.create_table :barcodes, id: false, force: true do |t|
           t.primary_key :id, :string
         end
@@ -820,7 +837,7 @@ module ActiveRecord
       end
 
       def test_custom_primary_key_in_change_table
-        connection = Barcode.connection
+        connection = Barcode.lease_connection
         connection.create_table :barcodes, id: false, force: true do |t|
           t.integer :dummy
         end
@@ -839,7 +856,7 @@ module ActiveRecord
       end
 
       def test_add_column_with_custom_primary_key
-        connection = Barcode.connection
+        connection = Barcode.lease_connection
         connection.create_table :barcodes, id: false, force: true do |t|
           t.integer :dummy
         end
@@ -856,7 +873,7 @@ module ActiveRecord
       end
 
       def test_remove_column_preserves_index_options
-        connection = Barcode.connection
+        connection = Barcode.lease_connection
         connection.create_table :barcodes, force: true do |t|
           t.string :code
           t.string :region
@@ -883,7 +900,7 @@ module ActiveRecord
       end
 
       def test_auto_increment_preserved_on_table_changes
-        connection = Barcode.connection
+        connection = Barcode.lease_connection
         connection.create_table :barcodes, force: true do |t|
           t.string :code
         end
@@ -924,14 +941,12 @@ module ActiveRecord
         statement = ::SQLite3::Statement.new(db,
                                            "CREATE TABLE statement_test (number integer not null)")
         statement.stub(:step, -> { raise ::SQLite3::BusyException.new("busy") }) do
-          assert_called(statement, :columns, returns: []) do
-            assert_called(statement, :close) do
-              ::SQLite3::Statement.stub(:new, statement) do
-                error = assert_raises ActiveRecord::StatementInvalid do
-                  @conn.exec_query "select * from statement_test"
-                end
-                assert_equal @conn.pool, error.connection_pool
+          assert_called(statement, :close) do
+            ::SQLite3::Statement.stub(:new, statement) do
+              error = assert_raises ActiveRecord::StatementTimeout do
+                @conn.exec_query "select * from statement_test"
               end
+              assert_equal @conn.pool, error.connection_pool
             end
           end
         end
@@ -999,7 +1014,7 @@ module ActiveRecord
           error = assert_raises(StandardError) do
             conn.add_index :testings, :non_existent2
           end
-          assert_match(/no such column: non_existent2/, error.message)
+          assert_match(/no such column: "?non_existent2"?/, error.message)
           assert_equal conn.pool, error.connection_pool
         end
       end
@@ -1011,7 +1026,7 @@ module ActiveRecord
         error = assert_raises(StandardError) do
           conn.add_index :testings, :non_existent
         end
-        assert_match(/no such column: non_existent/, error.message)
+        assert_match(/no such column: "?non_existent"?/, error.message)
         assert_equal conn.pool, error.connection_pool
 
         with_strict_strings_by_default do
@@ -1021,7 +1036,7 @@ module ActiveRecord
           error = assert_raises(StandardError) do
             conn.add_index :testings, :non_existent2
           end
-          assert_match(/no such column: non_existent2/, error.message)
+          assert_match(/no such column: "?non_existent2"?/, error.message)
           assert_equal conn.pool, error.connection_pool
         end
       end
@@ -1078,6 +1093,30 @@ module ActiveRecord
         with_example_table("id integer, shop_id integer, PRIMARY KEY (shop_id, id)", "cpk_table") do
           assert_not @conn.columns("cpk_table").any?(&:rowid)
         end
+      end
+
+      def test_sqlite_extensions_are_constantized_for_the_client_constructor
+        mock_adapter = Class.new(SQLite3Adapter) do
+          class << self
+            attr_reader :new_client_arg
+
+            def new_client(config)
+              @new_client_arg = config
+            end
+          end
+        end
+
+        conn = mock_adapter.new({
+          database: ":memory:",
+          adapter: "sqlite3",
+          extensions: [
+            "/string/literal/path",
+            "ActiveRecord::ConnectionAdapters::SQLite3AdapterTest::SQLiteExtensionSpec",
+          ]
+        })
+        conn.send(:connect)
+
+        assert_equal(["/string/literal/path", SQLiteExtensionSpec], conn.class.new_client_arg[:extensions])
       end
 
       private

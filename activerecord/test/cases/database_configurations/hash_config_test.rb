@@ -141,9 +141,29 @@ module ActiveRecord
         assert_equal "db/schema_cache.yml", config.default_schema_cache_path
       end
 
+      def test_schema_cache_path_default_for_custom_name
+        config = HashConfig.new("default_env", "alternate", adapter: "abstract")
+        assert_equal "db/alternate_schema_cache.yml", config.default_schema_cache_path
+      end
+
+      def test_schema_cache_path_default_for_different_db_dir
+        config = HashConfig.new("default_env", "alternate", adapter: "abstract")
+        assert_equal "my_db/alternate_schema_cache.yml", config.default_schema_cache_path("my_db")
+      end
+
       def test_schema_cache_path_configuration_hash
         config = HashConfig.new("default_env", "primary", { schema_cache_path: "db/config_schema_cache.yml", adapter: "abstract" })
         assert_equal "db/config_schema_cache.yml", config.schema_cache_path
+      end
+
+      def test_lazy_schema_cache_path
+        config = HashConfig.new("default_env", "primary", { schema_cache_path: "db/config_schema_cache.yml", adapter: "abstract" })
+        assert_equal "db/config_schema_cache.yml", config.lazy_schema_cache_path
+      end
+
+      def test_lazy_schema_cache_path_uses_default_if_config_is_not_present
+        config = HashConfig.new("default_env", "alternate", { adapter: "abstract" })
+        assert_equal "db/alternate_schema_cache.yml", config.lazy_schema_cache_path
       end
 
       def test_validate_checks_the_adapter_exists
@@ -152,6 +172,37 @@ module ActiveRecord
         config = HashConfig.new("default_env", "primary", adapter: "potato")
         assert_raises(ActiveRecord::AdapterNotFound) do
           config.validate!
+        end
+      end
+
+      def test_inspect_does_not_show_secrets
+        config = HashConfig.new("default_env", "primary", { adapter: "abstract", password: "hunter2" })
+        assert_equal "#<ActiveRecord::DatabaseConfigurations::HashConfig env_name=default_env name=primary adapter_class=ActiveRecord::ConnectionAdapters::AbstractAdapter>", config.inspect
+      end
+
+      def test_seeds_defaults_to_primary
+        config = HashConfig.new("default_env", "primary", { adapter: "abstract" })
+        assert_equal true, config.seeds?
+
+        config = HashConfig.new("default_env", "primary", { adapter: "abstract", seeds: false })
+        assert_equal false, config.seeds?
+
+        config = HashConfig.new("default_env", "primary", { adapter: "abstract", seeds: true })
+        assert_equal true, config.seeds?
+
+        config = HashConfig.new("default_env", "secondary", { adapter: "abstract" })
+        config.stub(:primary?, false) do # primary? will return nil without proper Base.configurations
+          assert_equal false, config.seeds?
+        end
+
+        config = HashConfig.new("default_env", "secondary", { adapter: "abstract", seeds: false })
+        config.stub(:primary?, false) do # primary? will return nil without proper Base.configurations
+          assert_equal false, config.seeds?
+        end
+
+        config = HashConfig.new("default_env", "secondary", { adapter: "abstract", seeds: true })
+        config.stub(:primary?, false) do # primary? will return nil without proper Base.configurations
+          assert_equal true, config.seeds?
         end
       end
     end

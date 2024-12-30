@@ -48,6 +48,15 @@ class ActiveRecord::Encryption::EncryptorTest < ActiveRecord::EncryptionTestCase
     assert cipher_text.bytesize < content.bytesize
   end
 
+  test "content is not compressed, when disabled" do
+    @encryptor = ActiveRecord::Encryption::Encryptor.new(compress: false)
+    content = SecureRandom.hex(5.kilobytes)
+    cipher_text = @encryptor.encrypt(content)
+
+    assert_encrypt_text content
+    assert cipher_text.bytesize > content.bytesize
+  end
+
   test "trying to encrypt custom classes raises a ForbiddenClass exception" do
     assert_raises ActiveRecord::Encryption::Errors::ForbiddenClass do
       @encryptor.encrypt(Struct.new(:name).new("Jorge"))
@@ -61,7 +70,8 @@ class ActiveRecord::Encryption::EncryptorTest < ActiveRecord::EncryptionTestCase
     encryptor = ActiveRecord::Encryption::Encryptor.new
 
     key_provider.stub :decryption_keys, ->(message) { [key] } do
-      encryptor.decrypt encryptor.encrypt("some text", key_provider: key_provider), key_provider: key_provider
+      decrypted_text = encryptor.decrypt encryptor.encrypt("some text", key_provider: key_provider), key_provider: key_provider
+      assert decrypted_text
     end
   end
 
@@ -76,6 +86,22 @@ class ActiveRecord::Encryption::EncryptorTest < ActiveRecord::EncryptionTestCase
     decrypted_text = @encryptor.decrypt(encrypted_text)
 
     assert_equal Encoding::ISO_8859_1, decrypted_text.encoding
+  end
+
+  test "accept a custom compressor" do
+    compressor = Module.new do
+      def self.deflate(data)
+        "compressed #{data}"
+      end
+
+      def self.inflate(data)
+        data.sub(/\Acompressed /, "")
+      end
+    end
+    @encryptor = ActiveRecord::Encryption::Encryptor.new(compressor: compressor)
+    content = SecureRandom.hex(5.kilobytes)
+
+    assert_encrypt_text content
   end
 
   private

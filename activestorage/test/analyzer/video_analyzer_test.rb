@@ -29,6 +29,15 @@ class ActiveStorage::Analyzer::VideoAnalyzerTest < ActiveSupport::TestCase
     assert_includes [90, -90], metadata[:angle]
   end
 
+  test "analyzing a rotated HDR video" do
+    blob = create_file_blob(filename: "rotated_hdr_video.mov", content_type: "video/quicktime")
+    metadata = extract_metadata_from(blob)
+
+    assert_equal 1080.0, metadata[:width]
+    assert_equal 1920.0, metadata[:height]
+    assert_includes [90, -90], metadata[:angle]
+  end
+
   test "analyzing a video with rectangular samples" do
     blob = create_file_blob(filename: "video_with_rectangular_samples.mp4", content_type: "video/mp4")
     metadata = extract_metadata_from(blob)
@@ -78,10 +87,10 @@ class ActiveStorage::Analyzer::VideoAnalyzerTest < ActiveSupport::TestCase
   end
 
   test "instrumenting analysis" do
-    events = subscribe_events_from("analyze.active_storage")
-
-    blob = create_file_blob(filename: "video_without_audio_stream.mp4", content_type: "video/mp4")
-    blob.analyze
+    events = capture_notifications("analyze.active_storage") do
+      blob = create_file_blob(filename: "video_without_audio_stream.mp4", content_type: "video/mp4")
+      blob.analyze
+    end
 
     assert_equal 1, events.size
     assert_equal({ analyzer: "ffprobe" }, events.first.payload)
