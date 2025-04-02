@@ -227,7 +227,7 @@ module ActiveSupport
             nodes.each do |node|
               begin
                 cursor, keys = node.scan(cursor, match: pattern, count: SCAN_BATCH_SIZE)
-                node.del(*keys) unless keys.empty?
+                node.unlink(*keys) unless keys.empty?
               end until cursor == "0"
             end
           end
@@ -359,7 +359,11 @@ module ActiveSupport
           keys = names.map { |name| normalize_key(name, options) }
 
           values = failsafe(:read_multi_entries, returning: {}) do
-            redis.then { |c| c.mget(*keys) }
+            redis.then do |c|
+              c.pipelined do |pipeline|
+                keys.each { |key| pipeline.get(key) }
+              end
+            end
           end
 
           names.zip(values).each_with_object({}) do |(name, value), results|
@@ -408,14 +412,18 @@ module ActiveSupport
         # Delete an entry from the cache.
         def delete_entry(key, **options)
           failsafe :delete_entry, returning: false do
-            redis.then { |c| c.del(key) == 1 }
+            redis.then { |c| c.unlink(key) == 1 }
           end
         end
 
         # Deletes multiple entries in the cache. Returns the number of entries deleted.
         def delete_multi_entries(entries, **_options)
           failsafe :delete_multi_entries, returning: 0 do
-            redis.then { |c| c.del(entries) }
+            redis.then do |c|
+              c.pipelined do |pipeline|
+                entries.each { |key| pipeline.unlink(key) }
+              end
+            end
           end
         end
 
@@ -491,7 +499,9 @@ module ActiveSupport
                 c.expire(key, expires_in.to_i) if ttl < 0
               end
             else
-              count = c.incrby(key, amount)
+              count = c.pipelined do |pipeline|
+                pipeline.incrby(key, amount)
+              end.first
             end
 
             count

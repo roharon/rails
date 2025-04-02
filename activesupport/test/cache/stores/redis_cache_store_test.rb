@@ -301,6 +301,38 @@ module ActiveSupport::Cache::RedisCacheStoreTests
         return r
       end
     end
+
+    def test_read_multi_entries_with_pipelined
+      @cache.write("foo", "bar")
+      @cache.write("baz", "qux")
+      result = @cache.read_multi("foo", "baz")
+      assert_equal({ "foo" => "bar", "baz" => "qux" }, result)
+    end
+
+    def test_delete_multi_entries_with_pipelined
+      @cache.write("foo", "bar")
+      @cache.write("baz", "qux")
+      @cache.delete_multi(["foo", "baz"])
+      assert_nil @cache.read("foo")
+      assert_nil @cache.read("baz")
+    end
+
+    def test_change_counter_with_pipelined
+      @cache.write("counter", 1, raw: true)
+      @cache.increment("counter", 2)
+      assert_equal 3, @cache.read("counter", raw: true).to_i
+      @cache.decrement("counter", 1)
+      assert_equal 2, @cache.read("counter", raw: true).to_i
+    end
+
+    def test_unlink_command
+      @cache.write("foo", "bar")
+      @cache.redis.with do |r|
+        assert r.exists?("#{@namespace}:foo")
+        r.unlink("#{@namespace}:foo")
+        assert_not r.exists?("#{@namespace}:foo")
+      end
+    end
   end
 
   class RedisCacheStoreWithDistributedRedisTest < RedisCacheStoreCommonBehaviorTest
