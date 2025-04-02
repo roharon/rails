@@ -1985,7 +1985,7 @@ module ActiveRecord
       def arel_column(field)
         field = field.name if is_symbol = field.is_a?(Symbol)
 
-        field = model.attribute_aliases[field] || field.to_s
+        field = model.attribute_aliases[field] || field
         from = from_clause.name || from_clause.value
 
         if model.columns_hash.key?(field) && (!from || table_name_matches?(from))
@@ -1996,8 +1996,10 @@ module ActiveRecord
           yield field
         elsif Arel.arel_node?(field)
           field
+        elsif is_symbol
+          Arel.sql(model.adapter_class.quote_table_name(field), retryable: true)
         else
-          Arel.sql(is_symbol ? model.adapter_class.quote_table_name(field) : field)
+          Arel.sql(field)
         end
       end
 
@@ -2009,9 +2011,12 @@ module ActiveRecord
 
       def reverse_sql_order(order_query)
         if order_query.empty?
-          return [table[primary_key].desc] if primary_key
+          if !_reverse_order_columns.empty?
+            return _reverse_order_columns.map { |column| table[column].desc }
+          end
+
           raise IrreversibleOrderError,
-            "Relation has no current order and table has no primary key to be used as default order"
+            "Relation has no current order and table has no order columns to be used as default order"
         end
 
         order_query.flat_map do |o|
@@ -2034,6 +2039,13 @@ module ActiveRecord
             o
           end
         end
+      end
+
+      def _reverse_order_columns
+        roc = []
+        roc << model.implicit_order_column if model.implicit_order_column
+        roc << model.primary_key if model.primary_key
+        roc.flatten.uniq.compact
       end
 
       def does_not_support_reverse?(order)

@@ -521,7 +521,7 @@ module ActiveRecord
             type.typname AS name,
             type.OID AS oid,
             n.nspname AS schema,
-            string_agg(enum.enumlabel, ',' ORDER BY enum.enumsortorder) AS value
+            array_agg(enum.enumlabel ORDER BY enum.enumsortorder) AS value
           FROM pg_enum AS enum
           JOIN pg_type AS type ON (type.oid = enum.enumtypid)
           JOIN pg_namespace n ON type.typnamespace = n.oid
@@ -634,7 +634,11 @@ module ActiveRecord
       # Returns the version of the connected PostgreSQL server.
       def get_database_version # :nodoc:
         with_raw_connection do |conn|
-          conn.server_version
+          version = conn.server_version
+          if version == 0
+            raise ActiveRecord::ConnectionNotEstablished, "Could not determine PostgreSQL version"
+          end
+          version
         end
       end
       alias :postgresql_version :database_version

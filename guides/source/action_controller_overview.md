@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Action Controller Overview
 ==========================
@@ -55,7 +55,7 @@ application to add a new client, Rails will create an instance of
 `ClientsController` and call its `new` method. If the `new` method is empty, Rails
 will automatically render the `new.html.erb` view by default.
 
-NOTE: The `new` method is an instance method here, called on an instance of `ClientsController`. This should not be confused with the `new` class method (ie`ClientsController.new`).
+NOTE: The `new` method is an instance method here, called on an instance of `ClientsController`. This should not be confused with the `new` class method (i.e., `ClientsController.new`).
 
 In the `new` method, the controller would typically create an instance of the
 `Client` model, and make it available as an instance variable called `@client`
@@ -1157,19 +1157,19 @@ class ApplicationController < ActionController::Base
 end
 
 class ActionDurationCallback
-  def self.around(controller, action)
+  def self.around(controller)
     start_time = Time.now
-    yield  # This executes the action
+    yield # This executes the action
     end_time = Time.now
 
     duration = end_time - start_time
-    Rails.logger.info "Action #{action} from controller #{controller} took #{duration.round(2)} seconds to execute."
+    Rails.logger.info "Action #{controller.action_name} from controller #{controller.controller_name} took #{duration.round(2)} seconds to execute."
   end
 end
 ```
 
 In above example, the `ActionDurationCallback`'s method is not run in the scope
-of the controller but gets `controller` and `action` as an argument.
+of the controller but gets `controller` as an argument.
 
 In general, the class being used for a `*_action` callback must implement a
 method with the same name as the action callback. So for the `before_action`

@@ -386,7 +386,7 @@ module ActiveSupport
       #   process can try to generate a new value after the extended time window
       #   has elapsed.
       #
-      #     # Set all values to expire after one minute.
+      #     # Set all values to expire after one second.
       #     cache = ActiveSupport::Cache::MemoryStore.new(expires_in: 1)
       #
       #     cache.write("foo", "original value")
@@ -658,6 +658,8 @@ module ActiveSupport
       #   version, the read will be treated as a cache miss. This feature is
       #   used to support recyclable cache keys.
       #
+      # * +:unless_exist+ - Prevents overwriting an existing cache entry.
+      #
       # Other options will be handled by the specific cache store implementation.
       def write(name, value, options = nil)
         options = merged_options(options)
@@ -739,6 +741,32 @@ module ActiveSupport
       # Some implementations may not support this method.
       def decrement(name, amount = 1, options = nil)
         raise NotImplementedError.new("#{self.class.name} does not support decrement")
+      end
+
+      # Reads a counter that was set by #increment / #decrement.
+      #
+      #   cache.write_counter("foo", 1)
+      #   cache.read_counter("foo") # => 1
+      #   cache.increment("foo")
+      #   cache.read_counter("foo") # => 2
+      #
+      # Options are passed to the underlying cache implementation.
+      def read_counter(name, **options)
+        options = merged_options(options).merge(raw: true)
+        read(name, **options)&.to_i
+      end
+
+      # Writes a counter that can then be modified by #increment / #decrement.
+      #
+      #   cache.write_counter("foo", 1)
+      #   cache.read_counter("foo") # => 1
+      #   cache.increment("foo")
+      #   cache.read_counter("foo") # => 2
+      #
+      # Options are passed to the underlying cache implementation.
+      def write_counter(name, value, **options)
+        options = merged_options(options).merge(raw: true)
+        write(name, value.to_i, **options)
       end
 
       # Cleans up the cache by removing expired entries.
@@ -1035,8 +1063,7 @@ module ActiveSupport
               # When an entry has a positive :race_condition_ttl defined, put the stale entry back into the cache
               # for a brief period while the entry is being recalculated.
               entry.expires_at = Time.now.to_f + race_ttl
-              options[:expires_in] = race_ttl * 2
-              write_entry(key, entry, **options)
+              write_entry(key, entry, **options, expires_in: race_ttl * 2)
             else
               delete_entry(key, **options)
             end

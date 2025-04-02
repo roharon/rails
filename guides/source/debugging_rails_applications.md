@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Debugging Rails Applications
 ============================
@@ -263,6 +263,8 @@ To enable, add in `application.rb` or any environment initializer:
 ```rb
 config.active_record.query_log_tags_enabled = true
 ```
+
+NOTE: Enabling Query tags automatically disables prepared statements, because it makes most queries unique.
 
 By default the name of the application, the name and action of the controller, or the name of the job are logged. The
 default format is [SQLCommenter](https://open-telemetry.github.io/opentelemetry-sqlcommenter/). For example:

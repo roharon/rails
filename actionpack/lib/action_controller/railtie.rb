@@ -93,12 +93,6 @@ module ActionController
       end
     end
 
-    initializer "action_controller.compile_config_methods" do
-      ActiveSupport.on_load(:action_controller) do
-        config.compile_methods! if config.respond_to?(:compile_methods!)
-      end
-    end
-
     initializer "action_controller.request_forgery_protection" do |app|
       ActiveSupport.on_load(:action_controller_base) do
         if app.config.action_controller.default_protect_from_forgery
@@ -137,6 +131,19 @@ module ActionController
     initializer "action_controller.test_case" do |app|
       ActiveSupport.on_load(:action_controller_test_case) do
         ActionController::TestCase.executor_around_each_request = app.config.active_support.executor_around_test_case
+      end
+    end
+
+    initializer "action_controller.escape_json_responses_deprecated_warning" do
+      config.after_initialize do
+        ActiveSupport.on_load(:action_controller) do
+          if ActionController::Base.escape_json_responses
+            ActionController.deprecator.warn(<<~MSG.squish)
+              Setting action_controller.escape_json_responses = true is deprecated and will have no effect in Rails 8.2.
+              Set it to `false` or use `config.load_defaults(8.1)`.
+            MSG
+          end
+        end
       end
     end
   end

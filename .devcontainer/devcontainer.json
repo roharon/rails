@@ -12,6 +12,9 @@
 		},
 		"ghcr.io/devcontainers/features/node:1": {
 			"version": "latest"
+		},
+		"ghcr.io/rails/devcontainer/features/postgres-client:1.1.1": {
+			"version": "17"
 		}
 	},
 
@@ -39,7 +42,7 @@
 				"Shopify.ruby-lsp"
 			]
 		}
-	},
+	}
 
 	// Uncomment to connect as root instead. More info: https://containers.dev/implementors/json_reference/#remoteUser.
 	// "remoteUser": "root"

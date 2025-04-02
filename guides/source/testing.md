@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Testing Rails Applications
 ==========================
@@ -91,7 +91,7 @@ NOTE: Your tests are run under `RAILS_ENV=test`. This is set by Rails automatica
 ### Writing Your First Test
 
 We introduced the `bin/rails generate model` command in the [Getting Started
-with Rails](getting_started.html#mvc-and-you-generating-a-model) guide.
+with Rails](getting_started.html#creating-a-database-model) guide.
 Alongside creating a model, this command also creates a test stub in the `test`
 directory:
 
@@ -590,7 +590,7 @@ Just about every Rails application interacts heavily with a database and so your
 tests will need a database to interact with as well. This section covers how to
 set up this test database and populate it with sample data.
 
-As mentioned in the [Test Envionment section](#the-test-environment), every
+As mentioned in the [Test Environment section](#the-test-environment), every
 Rails application has three environments: development, test, and production. The
 database for each one of them is configured in `config/database.yml`.
 
@@ -1023,7 +1023,7 @@ request type, request tests are available, making your tests more purposeful.
 
 ### Testing XHR (AJAX) Requests
 
-An AJAX request (Asynchronous Javscript and XML) is a technique where content is
+An AJAX request (Asynchronous JavaScript and XML) is a technique where content is
 fetched from the server using asynchronous HTTP requests and the relevant parts
 of the page are updated without requiring a full page load.
 
@@ -1334,7 +1334,7 @@ require "test_helper"
 class BlogFlowTest < ActionDispatch::IntegrationTest
   test "can see the welcome page" do
     get "/"
-    assert_selector "h1", "Welcome#index"
+    assert_dom "h1", "Welcome#index"
   end
 end
 ```
@@ -1342,10 +1342,8 @@ end
 If you visit the root path, you should see `welcome/index.html.erb` rendered for
 the view. So this assertion should pass.
 
-NOTE: The assertion `assert_selector` is available in integration tests to check
-the presence of key HTML elements and their content. It is similar to
-`assert_dom`, which should be used when [testing views](#testing-views) as
-outlined in the section below.
+NOTE: The assertion `assert_dom` (aliased to `assert_select`) is available in integration tests to check
+the presence of key HTML elements and their content.
 
 #### Creating Articles Integration
 
@@ -1439,7 +1437,7 @@ class UsersTest < ApplicationSystemTestCase
   # test "visiting the index" do
   #   visit users_url
   #
-  #   assert_selector "h1", text: "Users"
+  #   assert_dom "h1", text: "Users"
   # end
 end
 ```
@@ -1943,7 +1941,7 @@ object capable of parsing the view partial's rendered content.
 
 To transform the `String` content returned by the `rendered` method into an
 object, define a parser by calling
-[`register_parser`](https://apidock.com/rails/v7.1.3.4/ActionView/TestCase/Behavior/ClassMethods/register_parser).
+[`register_parser`](https://api.rubyonrails.org/classes/ActionView/TestCase/Behavior/ClassMethods.html#method-i-register_parser).
 Calling `register_parser :rss` defines a `rendered.rss` helper method. For
 example, to parse rendered [RSS content][] into an object with `rendered.rss`,
 register a call to `RSS::Parser.parse`:

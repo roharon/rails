@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "cases/helper"
+require "models/auto_id"
 require "models/aircraft"
 require "models/dashboard"
 require "models/clothing_item"
@@ -36,6 +37,22 @@ class PersistenceTest < ActiveRecord::TestCase
     topic = TitlePrimaryKeyTopic.create!(title: "title pk topic")
 
     assert_not_nil topic.attributes["id"]
+  end
+
+  def test_populates_autoincremented_id_pk_regardless_of_its_position_in_columns_list
+    auto_populated_column_names = AutoId.columns.select(&:auto_populated?).map(&:name)
+
+    # It's important we test a scenario where tables has more than one auto populated column
+    # and the first column is not the primary key. Otherwise it will be a regular test not asserting this special case.
+    assert auto_populated_column_names.size > 1
+    assert_not_equal AutoId.primary_key, auto_populated_column_names.first
+
+    record = AutoId.create!
+    last_id = AutoId.last.id
+
+    assert_not_nil last_id
+    assert last_id > 0
+    assert_equal last_id, record.id
   end
 
   def test_populates_non_primary_key_autoincremented_column_for_a_cpk_model
@@ -1663,7 +1680,7 @@ class QueryConstraintsTest < ActiveRecord::TestCase
     assert_uses_query_constraints_on_reload(used_clothing_item, ["clothing_type", "color"])
   end
 
-  def test_child_keeps_parents_query_contraints_derived_from_composite_pk
+  def test_child_keeps_parents_query_constraints_derived_from_composite_pk
     assert_equal(["author_id", "id"], Cpk::BestSeller.query_constraints_list)
   end
 

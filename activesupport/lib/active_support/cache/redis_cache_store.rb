@@ -250,6 +250,11 @@ module ActiveSupport
       # Incrementing a non-numeric value, or a value written without
       # <tt>raw: true</tt>, will fail and return +nil+.
       #
+      # To read the value later, call #read_counter:
+      #
+      #   cache.increment("baz") # => 7
+      #   cache.read_counter("baz") # 7
+      #
       # Failsafe: Raises errors.
       def increment(name, amount = 1, options = nil)
         options = merged_options(options)
@@ -276,6 +281,11 @@ module ActiveSupport
       #
       # Decrementing a non-numeric value, or a value written without
       # <tt>raw: true</tt>, will fail and return +nil+.
+      #
+      # To read the value later, call #read_counter:
+      #
+      #   cache.decrement("baz") # => 3
+      #   cache.read_counter("baz") # 3
       #
       # Failsafe: Raises errors.
       def decrement(name, amount = 1, options = nil)
@@ -497,7 +507,7 @@ module ActiveSupport
 
         def failsafe(method, returning: nil)
           yield
-        rescue ::Redis::BaseError => error
+        rescue ::Redis::BaseError, ConnectionPool::Error, ConnectionPool::TimeoutError => error
           @error_handler&.call(method: method, exception: error, returning: returning)
           returning
         end

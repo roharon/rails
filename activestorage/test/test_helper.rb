@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "active_support/testing/strict_warnings"
+require_relative "../../tools/strict_warnings"
 
 ENV["RAILS_ENV"] ||= "test"
 require_relative "dummy/config/environment.rb"
@@ -58,7 +58,7 @@ class ActiveSupport::TestCase
     def directly_upload_file_blob(filename: "racecar.jpg", content_type: "image/jpeg", record: nil)
       file = file_fixture(filename)
       byte_size = file.size
-      checksum = OpenSSL::Digest::MD5.file(file).base64digest
+      checksum = ActiveStorage.checksum_implementation.file(file).base64digest
 
       create_blob_before_direct_upload(filename: filename, byte_size: byte_size, checksum: checksum, content_type: content_type, record: record).tap do |blob|
         service = ActiveStorage::Blob.service.try(:primary) || ActiveStorage::Blob.service

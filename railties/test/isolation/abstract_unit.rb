@@ -8,7 +8,7 @@
 #
 # It is also good to know what is the bare minimum to get
 # Rails booted up.
-require "active_support/testing/strict_warnings"
+require_relative "../../../tools/strict_warnings"
 require "fileutils"
 require "shellwords"
 
@@ -539,6 +539,9 @@ module TestHelpers
             adapter: mysql2
             pool: 5
             username: root
+          <% if ENV['MYSQL_CODESPACES'] %>
+            password: 'root'
+          <% end %>
           <% if ENV['MYSQL_HOST'] %>
             host: <%= ENV['MYSQL_HOST'] %>
           <% end %>
@@ -562,6 +565,9 @@ module TestHelpers
             adapter: mysql2
             pool: 5
             username: root
+          <% if ENV['MYSQL_CODESPACES'] %>
+            password: 'root'
+          <% end %>
           <% if ENV['MYSQL_HOST'] %>
             host: <%= ENV['MYSQL_HOST'] %>
           <% end %>
@@ -595,6 +601,14 @@ class ActiveSupport::TestCase
   include TestHelpers::Reload
   include ActiveSupport::Testing::Stream
   include ActiveSupport::Testing::MethodCallAssertions
+
+  private
+    def with_env(env)
+      env.each { |k, v| ENV[k.to_s] = v }
+      yield
+    ensure
+      env.each_key { |k| ENV.delete k.to_s }
+    end
 end
 
 # Create a scope and build a fixture rails app

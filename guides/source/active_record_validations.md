@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Active Record Validations
 =========================
@@ -195,13 +195,13 @@ passed as an argument. This technique should be used with caution.
 [`increment_counter`]:
     https://api.rubyonrails.org/classes/ActiveRecord/CounterCache/ClassMethods.html#method-i-increment_counter
 [`insert`]:
-    https://api.rubyonrails.org/classes/ActiveRecord/Persistence/ClassMethods.html#method-i-insert
+    https://api.rubyonrails.org/classes/ActiveRecord/Relation.html#method-i-insert
 [`insert!`]:
-    https://api.rubyonrails.org/classes/ActiveRecord/Persistence/ClassMethods.html#method-i-insert-21
+    https://api.rubyonrails.org/classes/ActiveRecord/Relation.html#method-i-insert-21
 [`insert_all`]:
-    https://api.rubyonrails.org/classes/ActiveRecord/Persistence/ClassMethods.html#method-i-insert_all
+    https://api.rubyonrails.org/classes/ActiveRecord/Relation.html#method-i-insert_all
 [`insert_all!`]:
-    https://api.rubyonrails.org/classes/ActiveRecord/Persistence/ClassMethods.html#method-i-insert_all-21
+    https://api.rubyonrails.org/classes/ActiveRecord/Relation.html#method-i-insert_all-21
 [`toggle!`]:
     https://api.rubyonrails.org/classes/ActiveRecord/Persistence.html#method-i-toggle-21
 [`touch`]:
@@ -221,9 +221,9 @@ passed as an argument. This technique should be used with caution.
 [`update_counters`]:
     https://api.rubyonrails.org/classes/ActiveRecord/Relation.html#method-i-update_counters
 [`upsert`]:
-    https://api.rubyonrails.org/classes/ActiveRecord/Persistence/ClassMethods.html#method-i-upsert
+    https://api.rubyonrails.org/classes/ActiveRecord/Relation.html#method-i-upsert
 [`upsert_all`]:
-    https://api.rubyonrails.org/classes/ActiveRecord/Persistence/ClassMethods.html#method-i-upsert_all
+    https://api.rubyonrails.org/classes/ActiveRecord/Relation.html#method-i-upsert_all
 
 ### Checking Validity
 
@@ -1156,7 +1156,7 @@ empty string for example.
 
 ```ruby
 class Topic < ApplicationRecord
-  validates :title, length: { is: 5 }, allow_blank: true
+  validates :title, length: { is: 6 }, allow_blank: true
 end
 ```
 
@@ -1166,7 +1166,7 @@ irb> Topic.create(title: "").valid?
 irb> Topic.create(title: nil).valid?
 => true
 irb> Topic.create(title: "short").valid?
-=> false # 'short' is not of length 5, so validation fails even though it's not blank
+=> false # 'short' is not of length 6, so validation fails even though it's not blank
 ```
 
 ### `:message`

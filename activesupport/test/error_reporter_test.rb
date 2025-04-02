@@ -257,6 +257,38 @@ class ErrorReporterTest < ActiveSupport::TestCase
     assert_equal :error, @subscriber.events.dig(0, 2)
   end
 
+  test "errors be reported with valid severity" do
+    ActiveSupport::ErrorReporter::SEVERITIES.each do |severity|
+      @reporter.report(StandardError.new, severity: severity)
+      assert_equal severity, @subscriber.events.last[2]
+    end
+  end
+
+  test "errors with invalid severity raise" do
+    assert_raises ArgumentError do
+      @reporter.report(@error, severity: :invalid)
+    end
+  end
+
+  test "report raises if passed an argument that is not an Exception" do
+    error = assert_raises ArgumentError do
+      @reporter.report(Object.new)
+    end
+    assert_includes error.message, "Reported error must be an Exception"
+  end
+
+  test "report raises if passed a String" do
+    error = assert_raises ArgumentError do
+      @reporter.report("An error message")
+    end
+    assert_includes error.message, "Reported error must be an Exception"
+  end
+
+  test "report accepts context as nil" do
+    @reporter.report(@error, context: nil)
+    assert_equal({}, @subscriber.events.last[4])
+  end
+
   test "report errors only once" do
     assert_difference -> { @subscriber.events.size }, +1 do
       @reporter.report(@error, handled: false)
@@ -329,5 +361,58 @@ class ErrorReporterTest < ActiveSupport::TestCase
 
     expected = "Error subscriber raised an error: Big Oopsie (ErrorReporterTest::FailingErrorSubscriber::Error)"
     assert_equal expected, log.string.lines.first.chomp
+  end
+
+  test "error context middleware can mutate context hash" do
+    middleware = -> (_, context:, **kwargs) { context.merge({ foo: :bar }) }
+
+    error = ArgumentError.new("Oops")
+
+    @reporter.add_middleware(middleware)
+    @reporter.report(error)
+
+    assert_equal [[error, true, :warning, "application", { foo: :bar }]], @subscriber.events
+  end
+
+  class MyErrorContextMiddleware
+    def call(_, context:, **kwargs)
+      context.merge({ bar: :baz })
+    end
+  end
+
+  test "can have multiple error context middlewares" do
+    @reporter.add_middleware(-> (_, context:, **kwargs) { context.merge({ foo: :bar }) })
+    @reporter.add_middleware(MyErrorContextMiddleware.new)
+
+    error = ArgumentError.new("Oops")
+    @reporter.report(error)
+
+    assert_equal [[error, true, :warning, "application", { foo: :bar, bar: :baz }]], @subscriber.events
+  end
+
+  test "last error context middleware to update a key wins" do
+    @reporter.add_middleware(-> (_, context:, **kwargs) { context.merge({ foo: :bar }) })
+    @reporter.add_middleware(-> (_, context:, **kwargs) { context.merge({ foo: :baz }) })
+    error = ArgumentError.new("Oops")
+    @reporter.report(error)
+
+    assert_equal [[error, true, :warning, "application", { foo: :baz }]], @subscriber.events
+  end
+
+  test "error context middleware receives same parameters as #report" do
+    reported_error = ArgumentError.new("Oops")
+    @reporter.add_middleware(-> (error, context:, handled:, severity:, source:) {
+        assert_equal reported_error, error
+        assert_equal Hash.new, context
+        assert_equal true, handled
+        assert_equal :warning, severity
+        assert_equal ActiveSupport::ErrorReporter::DEFAULT_SOURCE, source
+
+        context.merge({ foo: :bar })
+      })
+
+    @reporter.report(reported_error)
+
+    assert_equal [[reported_error, true, :warning, "application", { foo: :bar }]], @subscriber.events
   end
 end

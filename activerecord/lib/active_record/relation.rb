@@ -60,7 +60,7 @@ module ActiveRecord
                             :reverse_order, :distinct, :create_with, :skip_query_cache]
 
     CLAUSE_METHODS = [:where, :having, :from]
-    INVALID_METHODS_FOR_DELETE_ALL = [:distinct, :with, :with_recursive]
+    INVALID_METHODS_FOR_UPDATE_AND_DELETE_ALL = [:distinct, :with, :with_recursive]
 
     VALUE_METHODS = MULTI_VALUE_METHODS + SINGLE_VALUE_METHODS + CLAUSE_METHODS
 
@@ -590,6 +590,18 @@ module ActiveRecord
 
       return 0 if @none
 
+      invalid_methods = INVALID_METHODS_FOR_UPDATE_AND_DELETE_ALL.select do |method|
+        value = @values[method]
+        method == :distinct ? value : value&.any?
+      end
+      if invalid_methods.any?
+        ActiveRecord.deprecator.warn <<~MESSAGE
+          `#{invalid_methods.join(', ')}` is not supported by `update_all` and was never included in the generated query.
+
+          Calling `#{invalid_methods.join(', ')}` with `update_all` will raise an error in Rails 8.2.
+        MESSAGE
+      end
+
       if updates.is_a?(Hash)
         if model.locking_enabled? &&
             !updates.key?(model.locking_column) &&
@@ -1011,7 +1023,7 @@ module ActiveRecord
     def delete_all
       return 0 if @none
 
-      invalid_methods = INVALID_METHODS_FOR_DELETE_ALL.select do |method|
+      invalid_methods = INVALID_METHODS_FOR_UPDATE_AND_DELETE_ALL.select do |method|
         value = @values[method]
         method == :distinct ? value : value&.any?
       end
@@ -1395,12 +1407,16 @@ module ActiveRecord
 
       def _increment_attribute(attribute, value = 1)
         bind = predicate_builder.build_bind_attribute(attribute.name, value.abs)
-        expr = table.coalesce(Arel::Nodes::UnqualifiedColumn.new(attribute), 0)
+        expr = table.coalesce(attribute, 0)
         expr = value < 0 ? expr - bind : expr + bind
         expr.expr
       end
 
       def exec_queries(&block)
+        if lock_value && model.current_preventing_writes
+          raise ActiveRecord::ReadOnlyError, "Lock query attempted while in readonly mode"
+        end
+
         skip_query_cache_if_necessary do
           rows = if scheduled?
             future = @future_result
@@ -1440,7 +1456,7 @@ module ActiveRecord
                 else
                   relation = join_dependency.apply_column_aliases(relation)
                   @_join_dependency = join_dependency
-                  c.select_all(relation.arel, "SQL", async: async)
+                  c.select_all(relation.arel, "#{model.name} Eager Load", async: async)
                 end
               end
             end

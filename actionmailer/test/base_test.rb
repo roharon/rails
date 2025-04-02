@@ -331,7 +331,7 @@ class BaseTest < ActiveSupport::TestCase
         mail body: "yay", from: "welcome@example.com", to: "to@example.com"
 
         unless attachments.map(&:filename) == ["invoice.pdf"]
-          raise Minitest::Assertion, "Should allow access to attachments"
+          flunk("Should allow access to attachments")
         end
       end
     end
@@ -973,14 +973,13 @@ class BaseTest < ActiveSupport::TestCase
   end
 
   test "notification for deliver" do
-    event = capture_notifications("deliver.action_mailer") do
-      assert_notifications_count("deliver.action_mailer", 1) do
+    assert_notifications_count("deliver.action_mailer", 1) do
+      notification = assert_notification("deliver.action_mailer") do
         BaseMailer.welcome(body: "Hello there").deliver_now
       end
-    end.first
 
-    assert_equal "deliver.action_mailer", event.name
-    assert_not_nil event.payload[:message_id]
+      assert_not_nil notification.payload[:message_id]
+    end
   end
 
   private

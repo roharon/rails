@@ -192,7 +192,7 @@ module ActiveRecord
           tbl.puts ", force: :cascade do |t|"
 
           # then dump all non-primary key columns
-          columns.each do |column|
+          columns.sort_by(&:name).each do |column|
             raise StandardError, "Unknown type '#{column.sql_type}' for column '#{column.name}'" unless @connection.valid_type?(column.type)
             next if column.name == pk
 
@@ -277,6 +277,7 @@ module ActiveRecord
         index_parts << "nulls_not_distinct: #{index.nulls_not_distinct.inspect}" if index.nulls_not_distinct
         index_parts << "type: #{index.type.inspect}" if index.type
         index_parts << "comment: #{index.comment.inspect}" if index.comment
+        index_parts << "enabled: #{index.enabled.inspect}" if @connection.supports_disabling_indexes? && index.disabled?
         index_parts
       end
 

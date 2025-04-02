@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Active Record Query Interface
 =============================
@@ -1296,7 +1296,7 @@ class Book
   # Returns reviews if there are at least 5,
   # else consider this as non-reviewed book
   def highlighted_reviews
-    if reviews.count > 5
+    if reviews.count >= 5
       reviews
     else
       Review.none # Does not meet minimum threshold yet

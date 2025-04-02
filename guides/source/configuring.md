@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Configuring Rails Applications
 ==============================
@@ -60,6 +60,7 @@ Below are the default values associated with each target version. In cases of co
 
 #### Default Values for Target Version 8.1
 
+- [`config.action_controller.escape_json_responses`](#config-action-controller-escape-json-responses): `false`
 - [`config.yjit`](#config-yjit): `!Rails.env.local?`
 
 #### Default Values for Target Version 8.0
@@ -283,6 +284,10 @@ console do
   config.console = Pry
 end
 ```
+
+#### `config.content_security_policy_nonce_auto`
+
+See [Adding a Nonce](security.html#adding-a-nonce) in the Security Guide
 
 #### `config.content_security_policy_nonce_directives`
 
@@ -641,6 +646,7 @@ See [Custom Configuration](#custom-configuration)
 
 Enables YJIT as of Ruby 3.3, to bring sizeable performance improvements. If you are
 deploying to a memory constrained environment you may want to set this to `false`.
+Additionally, you can pass a hash to configure YJIT options such as `{ stats: true }`.
 
 | Starting with version | The default value is |
 | --------------------- | -------------------- |
@@ -695,7 +701,7 @@ Enables the use of SHA256 fingerprints in asset names. Set to `true` by default.
 
 #### `config.assets.debug`
 
-Disables the concatenation and compression of assets. Set to `true` by default in `development.rb`.
+Disables the concatenation and compression of assets.
 
 #### `config.assets.version`
 
@@ -1072,13 +1078,20 @@ Lets you set an array of names of environments where destructive actions should 
 
 Specifies whether Rails will look for singular or plural table names in the database. If set to `true` (the default), then the Customer class will use the `customers` table. If set to `false`, then the Customer class will use the `customer` table.
 
+WARNING: Some Rails generators and installers (notably `active_storage:install`
+and `action_text:install`) create tables with plural names regardless of this
+setting. If you set `pluralize_table_names` to `false`, you will need to
+manually rename those tables after installation to maintain consistency.
+This limitation exists because these installers use fixed table names
+in their migrations for compatibility reasons.
+
 #### `config.active_record.default_timezone`
 
 Determines whether to use `Time.local` (if set to `:local`) or `Time.utc` (if set to `:utc`) when pulling dates and times from the database. The default is `:utc`.
 
 #### `config.active_record.schema_format`
 
-Controls the format for dumping the database schema to a file. The options are `:ruby` (the default) for a database-independent version that depends on migrations, or `:sql` for a set of (potentially database-dependent) SQL statements.
+Controls the format for dumping the database schema to a file. The options are `:ruby` (the default) for a database-independent version that depends on migrations, or `:sql` for a set of (potentially database-dependent) SQL statements. This can be overridden per-database by setting `schema_format` in your database configuration.
 
 #### `config.active_record.error_on_ignored_order`
 
@@ -1584,7 +1597,7 @@ For queries to actually be performed asynchronously, it must be set to either `:
 for applications with only a single database, or applications which only ever query one database shard at a time.
 
 `:multi_thread_pool` will use one pool per database, and each pool size can be configured individually in `database.yml` through the
-`max_threads` and `min_thread` properties. This can be useful to applications regularly querying multiple databases at a time, and that need to more precisely define the max concurrency.
+`max_threads` and `min_threads` properties. This can be useful to applications regularly querying multiple databases at a time, and that need to more precisely define the max concurrency.
 
 #### `config.active_record.global_executor_concurrency`
 
@@ -1673,7 +1686,7 @@ warning, or neither.
 
 #### `config.active_record.database_cli`
 
-Controls which CLI tool will be used for accessing the database when running `rails dbconsole`. By default
+Controls which CLI tool will be used for accessing the database when running `bin/rails dbconsole`. By default
 the standard tool for the database will be used (e.g. `psql` for PostgreSQL and `mysql` for MySQL). The option
 takes a hash which specifies the tool per-database system, and an array can be used where fallback options are
 required:
@@ -1951,6 +1964,21 @@ The default value depends on the `config.load_defaults` target version:
 
 Configures the [`ParamsWrapper`](https://api.rubyonrails.org/classes/ActionController/ParamsWrapper.html). This can be called at
 the top level, or on individual controllers.
+
+#### `config.action_controller.escape_json_responses`
+
+Configures the JSON renderer to escape HTML entities and Unicode characters that are invalid in JavaScript.
+
+This is useful if you relied on the JSON response having those characters escaped to embed the JSON document in
+\<script> tags in HTML.
+
+This is mainly for compatibility when upgrading Rails applications, otherwise you can use the `:escape` option for
+`render json:` in specific controller actions.
+
+| Starting with version | The default value is |
+| --------------------- | -------------------- |
+| (original)            | `true`               |
+| 8.1                   | `false`              |
 
 ### Configuring Action Dispatch
 
@@ -2445,7 +2473,7 @@ Allows detailed configuration for the `:smtp` delivery method. It accepts a hash
 * `:authentication` - If your mail server requires authentication, you need to specify the authentication type here. This is a symbol and one of `:plain`, `:login`, `:cram_md5`.
 * `:enable_starttls` - Use STARTTLS when connecting to your SMTP server and fail if unsupported. It defaults to `false`.
 * `:enable_starttls_auto` - Detects if STARTTLS is enabled in your SMTP server and starts to use it. It defaults to `true`.
-* `:openssl_verify_mode` - When using TLS, you can set how OpenSSL checks the certificate. This is useful if you need to validate a self-signed and/or a wildcard certificate. This can be one of the OpenSSL verify constants, `:none` or `:peer` -- or the constant directly `OpenSSL::SSL::VERIFY_NONE` or `OpenSSL::SSL::VERIFY_PEER`, respectively.
+* `:openssl_verify_mode` - When using TLS, you can set how OpenSSL checks the certificate. This is useful if you need to validate a self-signed and/or a wildcard certificate. This can be the name of one of the OpenSSL verify constants, `'none'` or `'peer'` - or the constant directly `OpenSSL::SSL::VERIFY_NONE` or `OpenSSL::SSL::VERIFY_PEER`, respectively.
 * `:ssl/:tls` - Enables the SMTP connection to use SMTP/TLS (SMTPS: SMTP over direct TLS connection).
 * `:open_timeout` - Number of seconds to wait while attempting to open a connection.
 * `:read_timeout` - Number of seconds to wait until timing-out a read(2) call.
@@ -2954,12 +2982,21 @@ only the configured origins.
 
 #### `config.action_cable.allowed_request_origins`
 
-Determines the request origins which will be accepted but the cable server.
+Determines the request origins which will be accepted by the cable server.
 The default value is `/https?:\/\/localhost:\d+/` in the `development` environment.
 
 ### Configuring Active Storage
 
 `config.active_storage` provides the following configuration options:
+
+#### `config.active_storage.checksum_implementation`
+
+Specify which digest implementation to use for internal checksums.
+The value must respond to Ruby's `Digest` interface.
+
+| Starting with version | The default value is                    |
+| --------------------- | --------------------------------------- |
+| (original)            | `OpenSSL::Digest::MD5` or `Digest::MD5` |
 
 #### `config.active_storage.variant_processor`
 
@@ -3860,7 +3897,7 @@ Below is a comprehensive list of all the initializers found in Rails in the orde
 
 * `load_environment_hook`: Serves as a placeholder so that `:load_environment_config` can be defined to run before it.
 
-* `load_active_support`: Requires `active_support/dependencies` which sets up the basis for Active Support. Optionally requires `active_support/all` if `config.active_support.bare` is un-truthful, which is the default.
+* `load_active_support`: Optionally requires `active_support/all` if `config.active_support.bare` is un-truthful, which is the default.
 
 * `initialize_logger`: Initializes the logger (an `ActiveSupport::BroadcastLogger` object) for the application and makes it accessible at `Rails.logger`, provided that no initializer inserted before this point has defined `Rails.logger`.
 

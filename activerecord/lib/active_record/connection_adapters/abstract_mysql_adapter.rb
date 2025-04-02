@@ -42,7 +42,7 @@ module ActiveRecord
         date:        { name: "date" },
         binary:      { name: "blob" },
         blob:        { name: "blob" },
-        boolean:     { name: "tinyint", limit: 1 },
+        boolean:     { name: "boolean" },
         json:        { name: "json" },
       }
 
@@ -172,6 +172,20 @@ module ActiveRecord
 
       def supports_insert_returning?
         mariadb? && database_version >= "10.5.0"
+      end
+
+      def return_value_after_insert?(column) # :nodoc:
+        supports_insert_returning? ? column.auto_populated? : column.auto_increment?
+      end
+
+      # See https://dev.mysql.com/doc/refman/8.0/en/invisible-indexes.html for more details on MySQL feature.
+      # See https://mariadb.com/kb/en/ignored-indexes/ for more details on the MariaDB feature.
+      def supports_disabling_indexes?
+        if mariadb?
+          database_version >= "10.6.0"
+        else
+          database_version >= "8.0.0"
+        end
       end
 
       def get_advisory_lock(lock_name, timeout = 0) # :nodoc:
@@ -453,6 +467,24 @@ module ActiveRecord
         CreateIndexDefinition.new(index, algorithm)
       end
 
+      def enable_index(table_name, index_name) # :nodoc:
+        raise NotImplementedError unless supports_disabling_indexes?
+
+        query = <<~SQL
+          ALTER TABLE #{quote_table_name(table_name)} ALTER INDEX #{index_name} #{mariadb? ? "NOT IGNORED" : "VISIBLE"}
+        SQL
+        execute(query)
+      end
+
+      def disable_index(table_name, index_name) # :nodoc:
+        raise NotImplementedError unless supports_disabling_indexes?
+
+        query = <<~SQL
+          ALTER TABLE #{quote_table_name(table_name)} ALTER INDEX #{index_name} #{mariadb? ? "IGNORED" : "INVISIBLE"}
+        SQL
+        execute(query)
+      end
+
       def add_sql_comment!(sql, comment) # :nodoc:
         sql << " COMMENT #{quote(comment)}" if comment.present?
         sql
@@ -728,12 +760,12 @@ module ActiveRecord
             m.alias_type %r(bit)i,  "binary"
           end
 
-          def register_integer_type(mapping, key, **options)
+          def register_integer_type(mapping, key, limit:)
             mapping.register_type(key) do |sql_type|
               if /\bunsigned\b/.match?(sql_type)
-                Type::UnsignedInteger.new(**options)
+                Type::UnsignedInteger.new(limit: limit)
               else
-                Type::Integer.new(**options)
+                Type::Integer.new(limit: limit)
               end
             end
           end

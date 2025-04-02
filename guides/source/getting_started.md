@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Getting Started with Rails
 ==========================
@@ -168,13 +168,22 @@ Rails.
 Hello, Rails!
 -------------
 
-Let's start easy and boot up our Rails server for the first time.
+Let's start easy by creating our application's database and boot up our Rails server for the first time.
 
-In your terminal, run the following command in the `store` directory:
+In your terminal, run the following commands in the `store` directory:
+
+```bash
+$ bin/rails db:create
+```
+
+This will initially create the application's database.
 
 ```bash
 $ bin/rails server
 ```
+
+NOTE: When we run commands inside an application directory, we should use
+`bin/rails`. This makes sure the application's version of Rails is used.
 
 This will start up a web server called Puma that will serve static files and
 your Rails application:
@@ -482,8 +491,7 @@ This generates a `SELECT` SQL query but also adds a `WHERE` clause to filter the
 records that have a `name` matching `"Pants"`. This also returns an
 `ActiveRecord::Relation` because multiple records may have the same name.
 
-We can use `order(name: :asc)` to sort records by name in ascending alphabetical
-order by `name`.
+We can use `order(name: :asc)` to sort records by name in ascending alphabetical order.
 
 ```irb
 store(dev)> Product.order(name: :asc)
@@ -683,7 +691,7 @@ First, let's do a quick refresher on URLs and HTTP Request methods.
 Let's examine the different parts of a URL:
 
 ```
-http://example.org/products?sale=true&sort=asc
+https://example.org/products?sale=true&sort=asc
 ```
 
 In this URL, each part has a name:
@@ -773,15 +781,10 @@ get "/blog/:title", to: "blog#show"
 Rails will capture `hello-world` out of `/blog/hello-world` and this can be used
 to look up the blog post with the matching title.
 
-
-```ruby
-get "/blog/:slug", to: "blog#show"
-```
-
 #### CRUD Routes
 
 There are 4 common actions you will generally need for a resource: Create, Read,
-Update, Delete (CRUD). This translates to 7 typical routes:
+Update, Delete (CRUD). This translates to 8 typical routes:
 
 * Index - Shows all the records
 * New - Renders a form for creating a new record
@@ -789,8 +792,8 @@ Update, Delete (CRUD). This translates to 7 typical routes:
   record
 * Show - Renders a specific record for viewing
 * Edit - Renders a form for updating a specific record
-* Update - Handles the edit form submission, handling errors and updating the
-  record
+* Update (full) - Handles the edit form submission, handling errors and updating the entire record, and typically triggered by a PUT request.
+* Update (partial) - Handles the edit form submission, handling errors and updating specific attributes of the record, and typically triggered by a PATCH request.
 * Destroy - Handles deleting a specific record
 
 We can add routes for these CRUD actions with the following:
@@ -857,7 +860,7 @@ Controllers & Actions
 Now that we've defined routes for Products, let's implement the controller and
 actions to handle requests to these URLs.
 
-This command will generate a `ProductsController with an index action. Since
+This command will generate a `ProductsController` with an index action. Since
 we've already set up routes, we can skip that part of the generator using a
 flag.
 
@@ -1080,8 +1083,8 @@ helpers you can use for generating URLs with Ruby code.
 
 These route prefixes give us helpers like the following:
 
-* `products_path` generates `"/products`"`
-* `products_url` generates `"http://localhost:3000/products`"`
+* `products_path` generates `"/products"`
+* `products_url` generates `"http://localhost:3000/products"`
 * `product_path(1)` generates `"/products/1"`
 * `product_url(1)` generates `"http://localhost:3000/products/1"`
 
@@ -1095,7 +1098,7 @@ browser.
 
 Combined with the `link_to` helper, we can generate anchor tags and use the URL
 helper to do this cleanly in Ruby. `link_to` accepts the display content for the
-link (`product.name`)and the path or URL to link to for the `href` attribute
+link (`product.name`) and the path or URL to link to for the `href` attribute
 (`product`).
 
 Let's refactor this to use these helpers:
@@ -1106,7 +1109,7 @@ Let's refactor this to use these helpers:
 <div id="products">
   <% @products.each do |product| %>
     <div>
-      <%= link_to product.name, product %>
+      <%= link_to product.name, product_path(product.id) %>
     </div>
   <% end %>
 </div>
@@ -1153,7 +1156,7 @@ We can update `app/views/products/index.html.erb` to link to the new action.
 <div id="products">
   <% @products.each do |product| %>
     <div>
-      <%= link_to product.name, product %>
+      <%= link_to product.name, product_path(product.id) %>
     </div>
   <% end %>
 </div>
@@ -1650,7 +1653,7 @@ link if not authenticated.
 <%= link_to "Login", new_session_path unless authenticated? %>
 ```
 
-You can also update the Edit and Destroy links on the
+You can also update the Edit and Delete links on the
 `app/views/products/show.html.erb` view to only display if authenticated.
 
 ```erb#4,7
@@ -1659,7 +1662,7 @@ You can also update the Edit and Destroy links on the
 <%= link_to "Back", products_path %>
 <% if authenticated? %>
   <%= link_to "Edit", edit_product_path(@product) %>
-  <%= button_to "Destroy", @product, method: :delete, data: { turbo_confirm: "Are you sure?" } %>
+  <%= button_to "Delete", @product, method: :delete, data: { turbo_confirm: "Are you sure?" } %>
 <% end %>
 ```
 
@@ -2353,7 +2356,7 @@ Extracting code into concerns also helps make features reusable. For example, we
 could introduce a new model that also needs subscriber notifications. This
 module could be used in multiple models to provide the same functionality.
 
-### Unsubscribe links
+### Unsubscribe Links
 
 A subscriber may want to unsubscribe at some point, so let's build that next.
 

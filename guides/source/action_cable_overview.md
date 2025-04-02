@@ -1,4 +1,4 @@
-**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON https://guides.rubyonrails.org.**
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON <https://guides.rubyonrails.org>.**
 
 Action Cable Overview
 =====================
@@ -748,6 +748,12 @@ Below is a list of the subscription adapters available for end-users.
 ##### Async Adapter
 
 The async adapter is intended for development/testing and should not be used in production.
+
+NOTE: The async adapter only works within the same process, so for manually triggering cable updates from a console and seeing results in the browser, you must do so from the web console (running inside the dev process), not a terminal started via `bin/rails console`! Add `console` to any action or any ERB template view to make the web console appear.
+
+##### Solid Cable Adapter
+
+The Solid Cable adapter is a database-backed solution that uses Active Record. It has been tested with MySQL, SQLite, and PostgreSQL. Running `bin/rails solid_cable:install` will automatically set up `config/cable.yml` and create `db/cable_schema.rb`. After that, you must manually update `config/database.yml`, adjusting it based on your database. See [Solid Cable Installation](https://github.com/rails/solid_cable?tab=readme-ov-file#installation).
 
 ##### Redis Adapter
 

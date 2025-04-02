@@ -62,7 +62,6 @@ module ActiveRecord
   autoload :ModelSchema
   autoload :NestedAttributes
   autoload :NoTouching
-  autoload :Normalization
   autoload :Persistence
   autoload :QueryCache
   autoload :QueryLogs
@@ -289,6 +288,7 @@ module ActiveRecord
   def self.global_thread_pool_async_query_executor # :nodoc:
     concurrency = global_executor_concurrency || 4
     @global_thread_pool_async_query_executor ||= Concurrent::ThreadPoolExecutor.new(
+      name: "ActiveRecord-global-async-query-executor",
       min_threads: 0,
       max_threads: concurrency,
       max_queue: concurrency * 4,
@@ -371,7 +371,8 @@ module ActiveRecord
   # specific) SQL statements. If :ruby, the schema is dumped as an
   # ActiveRecord::Schema file which can be loaded into any database that
   # supports migrations. Use :ruby if you want to have different database
-  # adapters for, e.g., your development and test environments.
+  # adapters for, e.g., your development and test environments. This can be
+  # overridden per-database in the database configuration.
   singleton_class.attr_accessor :schema_format
   self.schema_format = :ruby
 
