@@ -1,4 +1,8 @@
-*   Add `Cache#read_counter` and `Cache#write_counter`
+*   Use `UNLINK` command instead of `DEL` in `ActiveSupport::Cache::RedisCacheStore` for non-blocking deletion.
+
+    *Aron Roh*
+
+* Add `Cache#read_counter` and `Cache#write_counter`
 
     ```ruby
     Rails.cache.write_counter("foo", 1)
